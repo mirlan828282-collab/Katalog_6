@@ -1,0 +1,80 @@
+name: Build PhotoArchiveCatalog Installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.8
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"
+          architecture: "x64"
+
+      - name: Install Python dependencies
+        shell: powershell
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download face recognition models
+        shell: powershell
+        run: |
+          python download_models.py
+
+      - name: Build PhotoArchiveCatalog EXE
+        shell: powershell
+        run: |
+          pyinstaller --noconfirm --clean --windowed --onefile `
+            --name PhotoArchiveCatalog `
+            --hidden-import=cv2 `
+            --hidden-import=numpy `
+            --hidden-import=openpyxl `
+            --hidden-import=docx `
+            --hidden-import=pyodbc `
+            --hidden-import=win32com `
+            --hidden-import=win32com.client `
+            --hidden-import=pythoncom `
+            --hidden-import=pywintypes `
+            --collect-all docx `
+            --add-data "models;models" `
+            --add-data "assets;assets" `
+            main.py
+
+      - name: Build Updater EXE
+        shell: powershell
+        run: |
+          pyinstaller --noconfirm --clean --windowed --onefile `
+            --name PhotoArchiveCatalogUpdater `
+            updater.py
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: |
+          choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: powershell
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "installer.iss"
+
+      - name: Show installer files
+        shell: powershell
+        run: |
+          Get-ChildItem -Recurse output
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoArchiveCatalog-Setup-v6
+          path: output/*.exe
+          if-no-files-found: error
