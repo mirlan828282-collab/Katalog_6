@@ -908,7 +908,7 @@ class EditorScreen(BaseScreen):
         super().__init__(parent,app);self.nav('editor');self.current_id=None;self.current_path='';self.preview_ref=None
         top=ttk.Frame(self,padding=(10,0,10,6));top.pack(fill='x')
         ttk.Button(top,text='Новая карточка',command=self.new).pack(side='left')
-        ttk.Button(top,text='Импорт Access',command=self.import_access).pack(side='left',padx=4)
+        ttk.Button(top,text='Импорт Access с фото',command=self.import_access_with_photos).pack(side='left',padx=4)
         ttk.Button(top,text='Извлечь фото Access',command=self.extract_access_attachments).pack(side='left',padx=4)
         ttk.Button(top,text='Импорт Excel/CSV',command=self.import_table).pack(side='left',padx=4)
         ttk.Button(top,text='Импорт Word DOCX',command=self.import_word).pack(side='left',padx=4)
@@ -1119,6 +1119,172 @@ class EditorScreen(BaseScreen):
             a,u,sk=self._import_dict_rows(rows,DATA_DIR,'Вставка из буфера',mode)
             self.refresh();messagebox.showinfo(APP_NAME,f'Вставка завершена.\nДобавлено: {a}\nОбновлено: {u}\nПропущено: {sk}')
         except Exception as exc:messagebox.showerror(APP_NAME,f'Ошибка вставки:\n{exc}')
+
+    def import_access_with_photos(self):
+        """Import metadata and Access Attachment photos in one pass using DAO."""
+        path=filedialog.askopenfilename(title='Импорт Access с фотографиями',filetypes=[('Access','*.accdb *.mdb')])
+        if not path:return
+        only_missing=messagebox.askyesno(
+            APP_NAME,
+            'Повторный импорт / защита от дублей:\n\nДа — добавлять новые записи и заполнять только отсутствующие фотографии (рекомендуется).\nНет — импортировать все вложения; дополнительные фотографии будут созданы как отдельные карточки.'
+        )
+        try:
+            import win32com.client
+        except Exception:
+            messagebox.showerror(APP_NAME,'Не установлен компонент pywin32. Установите обновлённую сборку программы.')
+            return
+        try:
+            engine=None
+            for progid in ('DAO.DBEngine.120','DAO.DBEngine.36'):
+                try:
+                    engine=win32com.client.Dispatch(progid); break
+                except Exception:
+                    pass
+            if engine is None:
+                raise RuntimeError('Не найден Microsoft Access Database Engine / DAO. Установите Microsoft Access Database Engine той же разрядности, что и программа.')
+            adb=engine.OpenDatabase(str(path))
+            tables=[]
+            for i in range(adb.TableDefs.Count):
+                td=adb.TableDefs.Item(i); name=safe_text(td.Name)
+                if name and not name.startswith('MSys') and not name.startswith('~'):
+                    tables.append(name)
+            if not tables:
+                adb.Close(); raise RuntimeError('В базе Access не найдены таблицы.')
+            table=tables[0]
+            if len(tables)>1:
+                entered=simpledialog.askstring(APP_NAME,'Доступные таблицы:\n'+'\n'.join(tables[:50])+'\n\nВведите имя таблицы:',initialvalue=table,parent=self)
+                if not entered or entered not in tables:
+                    adb.Close(); return
+                table=entered
+
+            rs=adb.OpenRecordset(f'[{table}]')
+            fields=[]; attach_fields=[]
+            for i in range(rs.Fields.Count):
+                f=rs.Fields.Item(i); name=safe_text(f.Name); fields.append(name)
+                try:
+                    if int(f.Type)==101: attach_fields.append(name)
+                except Exception: pass
+            if not attach_fields:
+                rs.Close(); adb.Close(); raise RuntimeError('В выбранной таблице не найдено поле типа «Вложение» (Attachment).')
+
+            aliases={
+                'archive_no':['архивный номер','архивный №','арх №','арх. №','архивный номер фото','номер','archive no','archive_no','шифр'],
+                'description':['описание','описание фотографии','содержание','аннотация','description','сюжет'],
+                'shot_date':['дата съемки','дата съёмки','дата','дата фото','shot date','shot_date'],
+                'location':['место съемки','место съёмки','место','location'],
+                'author':['автор съемки','автор съёмки','автор','фотограф','author'],
+                'source':['источник поступления','источник','source','поступление']}
+            def hnorm(x): return re.sub(r'[\s._№#:-]+',' ',safe_text(x).casefold()).strip()
+            def find_field(names):
+                normalized={hnorm(f):f for f in fields}
+                for a in names:
+                    if hnorm(a) in normalized:return normalized[hnorm(a)]
+                return None
+            mapped={k:find_field(v) for k,v in aliases.items()}
+            archive_field=mapped['archive_no']
+            if archive_field is None:
+                entered=simpledialog.askstring(APP_NAME,'Не удалось определить поле архивного номера.\n\nПоля таблицы:\n'+', '.join(fields)+'\n\nВведите точное имя поля:',parent=self)
+                if not entered or entered not in fields:
+                    rs.Close(); adb.Close(); return
+                archive_field=entered; mapped['archive_no']=entered
+            attach_field=attach_fields[0]
+            if len(attach_fields)>1:
+                entered=simpledialog.askstring(APP_NAME,'Найдено несколько полей «Вложение»:\n'+', '.join(attach_fields)+'\n\nВведите поле с фотографиями:',initialvalue=attach_field,parent=self)
+                if not entered or entered not in attach_fields:
+                    rs.Close(); adb.Close(); return
+                attach_field=entered
+
+            try:
+                cr=adb.OpenRecordset(f'SELECT Count(*) AS Cnt FROM [{table}]')
+                total=int(cr.Fields.Item('Cnt').Value or 0); cr.Close()
+            except Exception:
+                total=0
+
+            index={}
+            for rr in self.db.all(): index.setdefault(normalize_key(rr['archive_no']),[]).append(rr)
+            processed=added=updated=skipped=extracted=attached=cloned=no_number=errors=0
+            dlg=ProgressDialog(self,'Импорт Access с фотографиями')
+            self.db.conn.execute('BEGIN')
+            try:
+                while not rs.EOF:
+                    processed+=1
+                    try:
+                        rec={k:'' for k in CatalogDB.FIELDS}
+                        for key,fname in mapped.items():
+                            if fname:
+                                try: rec[key]=safe_text(rs.Fields.Item(fname).Value)
+                                except Exception: rec[key]=''
+                        archive_no=safe_text(rec['archive_no'])
+                        if not archive_no:
+                            no_number+=1; rs.MoveNext(); continue
+                        key=normalize_key(archive_no)
+                        matches=index.get(key,[])
+                        existed_before=bool(matches)
+
+                        if matches:
+                            base=matches[0]
+                            merged={k:(rec.get(k) if safe_text(rec.get(k)) else base[k]) for k in CatalogDB.FIELDS}
+                            merged['file_path']=base['file_path']
+                            self.db.update(base['id'],merged,commit=False,reset_faces=False); updated+=1
+                            fresh=self.db.get(base['id']); matches[0]=fresh
+                        else:
+                            nid=self.db.add(rec,commit=False); added+=1
+                            fresh=self.db.get(nid); matches=[fresh]; index[key]=matches
+
+                        try: ars=rs.Fields.Item(attach_field).Value
+                        except Exception: ars=None
+                        if ars is not None:
+                            while True:
+                                try:
+                                    if ars.EOF: break
+                                except Exception:
+                                    break
+                                try:
+                                    filename=safe_text(ars.Fields.Item('FileName').Value) or f'{archive_no}.jpg'
+                                    target=next((r for r in matches if not safe_text(r['file_path'])),None)
+                                    # On a repeated "only missing" import, do not create duplicate extra cards.
+                                    if only_missing and existed_before and target is None:
+                                        skipped+=1; ars.MoveNext(); continue
+                                    clean_name=re.sub(r'[^0-9A-Za-zА-Яа-яЁё._ -]+','_',Path(filename).name)
+                                    if not Path(clean_name).suffix: clean_name += '.jpg'
+                                    safe_arch=re.sub(r'[^0-9A-Za-zА-Яа-яЁё._ -]+','_',archive_no)
+                                    dest=PHOTOS_DIR / f"{safe_arch}_{datetime.now():%Y%m%d_%H%M%S_%f}_{clean_name}"
+                                    ars.Fields.Item('FileData').SaveToFile(str(dest)); extracted+=1
+                                    if target is not None:
+                                        d={k:target[k] for k in CatalogDB.FIELDS}; d['file_path']=str(dest)
+                                        self.db.update(target['id'],d,commit=False,reset_faces=False); attached+=1
+                                        fresh=self.db.get(target['id'])
+                                        for j,rr in enumerate(matches):
+                                            if rr['id']==target['id']: matches[j]=fresh; break
+                                    else:
+                                        src=matches[0]; d={k:src[k] for k in CatalogDB.FIELDS}; d['file_path']=str(dest)
+                                        nid=self.db.add(d,commit=False); cloned+=1; matches.append(self.db.get(nid))
+                                except Exception:
+                                    errors+=1
+                                try: ars.MoveNext()
+                                except Exception: break
+                            try: ars.Close()
+                            except Exception: pass
+                    except Exception:
+                        errors+=1
+                    if processed % 300 == 0:
+                        self.db.conn.commit(); self.db.conn.execute('BEGIN')
+                    if processed==total or processed%10==0:
+                        dlg.update_progress(processed,max(total,processed),f'Архивный №: {archive_no if "archive_no" in locals() and archive_no else "—"}',f'Добавлено: {added} | Обновлено: {updated} | Фото: {extracted} | Привязано: {attached} | Доп.: {cloned} | Пропущено: {skipped} | Ошибок: {errors}')
+                    rs.MoveNext()
+                self.db.conn.commit()
+            except Exception:
+                self.db.conn.rollback(); raise
+            finally:
+                dlg.close()
+                try: rs.Close()
+                except Exception: pass
+                try: adb.Close()
+                except Exception: pass
+            self.refresh()
+            messagebox.showinfo(APP_NAME,f'Импорт Access завершён.\n\nТаблица: {table}\nОбработано записей: {processed}\nДобавлено карточек: {added}\nОбновлено карточек: {updated}\nИзвлечено фотографий: {extracted}\nПривязано к карточкам: {attached}\nДополнительных карточек для фото: {cloned}\nПропущено существующих фото: {skipped}\nБез архивного номера: {no_number}\nОшибок: {errors}')
+        except Exception as exc:
+            messagebox.showerror(APP_NAME,f'Ошибка импорта Access с фотографиями:\n{exc}')
 
     def import_access(self):
         path=filedialog.askopenfilename(title='Импорт Microsoft Access',filetypes=[('Access','*.accdb *.mdb')])
@@ -1398,6 +1564,7 @@ class CatalogScreen(BaseScreen):
         ttk.Button(top1,text='Импорт Word',command=self.catalog_import_word).pack(side='left',padx=(12,4))
         ttk.Button(top1,text='Вставить из Word/Excel',command=self.catalog_import_clipboard).pack(side='left',padx=4)
         ttk.Button(top1,text='Импорт фото по архивным №',command=self.catalog_import_photos).pack(side='left',padx=4)
+        ttk.Button(top1,text='Импорт Access с фото',command=self.catalog_import_access_with_photos).pack(side='left',padx=4)
         ttk.Button(top1,text='Извлечь фото из Access',command=self.catalog_extract_access).pack(side='left',padx=4)
         ttk.Button(top1,text='⚙ Вид',command=self.app.open_settings).pack(side='right',padx=(8,0))
 
@@ -1449,6 +1616,9 @@ class CatalogScreen(BaseScreen):
 
     def catalog_import_photos(self):
         self.app.screens['editor'].import_photos_by_number(); self.new_search()
+
+    def catalog_import_access_with_photos(self):
+        self.app.screens['editor'].import_access_with_photos(); self.new_search()
 
     def catalog_extract_access(self):
         self.app.screens['editor'].extract_access_attachments(); self.new_search()
