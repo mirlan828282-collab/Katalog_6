@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+build/
+dist/
+installer_output/
+models/
+update_package/
+PhotoArchiveCatalog_Update_*.zip
