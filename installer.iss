@@ -14,7 +14,6 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 OutputDir=installer_output
 OutputBaseFilename=PhotoArchiveCatalog_Setup_v{#MyAppVersion}
-SetupIconFile=assets\program_icon.ico
 UninstallDisplayIcon={app}\PhotoArchiveCatalog.exe
 Compression=lzma2/ultra64
 SolidCompression=yes
