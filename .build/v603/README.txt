@@ -1,0 +1,1 @@
+PhotoArchiveCatalog v6.0.3 build staging files.
