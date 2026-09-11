@@ -70,11 +70,12 @@ jobs:
       - name: Show installer files
         shell: powershell
         run: |
-          Get-ChildItem -Recurse output
+          Write-Host "Installer files:"
+          Get-ChildItem -Recurse installer_output
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: PhotoArchiveCatalog-Setup-v6
-          path: output/*.exe
+          path: installer_output/*.exe
           if-no-files-found: error
