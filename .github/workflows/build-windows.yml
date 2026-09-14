@@ -7,7 +7,7 @@ on:
       - main
 
 env:
-  APP_VERSION: "6.0.4"
+  APP_VERSION: "6.0.5"
 
 jobs:
   build:
@@ -18,20 +18,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare v6.0.3 source payload
+      - name: Prepare v6.0.5 source payload
         shell: powershell
         run: |
-          $parts = Get-ChildItem ".build\v603\payload_*.txt" | Sort-Object Name
-          if ($parts.Count -ne 7) { throw "Expected 7 payload chunks, found $($parts.Count)" }
-          $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ""
-          $bytes = [Convert]::FromBase64String($b64)
-          $zip = Join-Path $env:RUNNER_TEMP "v603_source.zip"
-          [IO.File]::WriteAllBytes($zip, $bytes)
+          $zip = ".build\v605\source.zip"
+          if (!(Test-Path $zip)) { throw "v6.0.5 source payload not found: $zip" }
           Expand-Archive -Path $zip -DestinationPath . -Force
-          Write-Host "v6.0.3 base source prepared"
-
-      - name: Apply v6.0.4 changes
-        run: python .build/patch_v604.py
+          if (!(Test-Path "main.py")) { throw "main.py was not extracted" }
+          Write-Host "v6.0.5 source prepared"
+          Get-Content version.txt
 
       - name: Set up Python 3.8 x64
         uses: actions/setup-python@v5
@@ -46,10 +41,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Download face models and state-symbol images
-        run: python download_models.py
-
-      - name: Rebuild Windows multi-size icon
+      - name: Normalize Windows application icon
         shell: powershell
         run: |
           @'
@@ -60,11 +52,11 @@ jobs:
               raise SystemExit('assets/program_icon.png not found')
           im=Image.open(p).convert('RGBA')
           im.save('assets/program_icon.ico', format='ICO', sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])
-          print('Windows icon rebuilt')
+          print('Windows multi-size ICO rebuilt successfully')
           '@ | python -
 
-      - name: Validate Python source
-        run: python -m py_compile main.py updater.py face_engine.py download_models.py
+      - name: Download face models and state-symbol images
+        run: python download_models.py
 
       - name: Build main program
         shell: cmd
@@ -87,7 +79,6 @@ jobs:
           --hidden-import pythoncom
           --hidden-import pywintypes
           --collect-all openpyxl
-          --collect-all reportlab
           --collect-submodules win32com
           main.py
 
@@ -109,7 +100,6 @@ jobs:
         run: |
           if (!(Test-Path "dist/PhotoArchiveCatalog.exe")) { throw "Main EXE was not created" }
           if (!(Test-Path "dist/PhotoArchiveCatalogUpdater.exe")) { throw "Updater EXE was not created" }
-          Get-Content version.txt
           Get-Item "dist/PhotoArchiveCatalog.exe", "dist/PhotoArchiveCatalogUpdater.exe" | Format-Table Name,Length,FullName
 
       - name: Install Inno Setup
@@ -131,6 +121,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path update_package | Out-Null
           Copy-Item dist\PhotoArchiveCatalog.exe update_package\PhotoArchiveCatalog.exe
           Copy-Item dist\PhotoArchiveCatalogUpdater.exe update_package\PhotoArchiveCatalogUpdater.exe
+          Copy-Item assets\program_icon.ico update_package\program_icon.ico
           @{ app="PhotoArchiveCatalog"; version=$version; created=(Get-Date).ToString("s") } | ConvertTo-Json | Set-Content -Encoding UTF8 update_package\update_manifest.json
           Compress-Archive -Path update_package\* -DestinationPath "PhotoArchiveCatalog_Update_v$version.zip" -Force
 
