@@ -1,0 +1,1 @@
+PhotoArchiveCatalog v6.0.6 build payload. Seven base64 chunks reconstruct the source ZIP used by GitHub Actions.
