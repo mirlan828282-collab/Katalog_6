@@ -7,7 +7,7 @@ on:
       - main
 
 env:
-  APP_VERSION: "6.0.3"
+  APP_VERSION: "6.0.4"
 
 jobs:
   build:
@@ -28,8 +28,10 @@ jobs:
           $zip = Join-Path $env:RUNNER_TEMP "v603_source.zip"
           [IO.File]::WriteAllBytes($zip, $bytes)
           Expand-Archive -Path $zip -DestinationPath . -Force
-          Write-Host "v6.0.3 source prepared"
-          Get-Content version.txt
+          Write-Host "v6.0.3 base source prepared"
+
+      - name: Apply v6.0.4 changes
+        run: python .build/patch_v604.py
 
       - name: Set up Python 3.8 x64
         uses: actions/setup-python@v5
@@ -46,6 +48,23 @@ jobs:
 
       - name: Download face models and state-symbol images
         run: python download_models.py
+
+      - name: Rebuild Windows multi-size icon
+        shell: powershell
+        run: |
+          @'
+          from PIL import Image
+          from pathlib import Path
+          p=Path('assets/program_icon.png')
+          if not p.exists():
+              raise SystemExit('assets/program_icon.png not found')
+          im=Image.open(p).convert('RGBA')
+          im.save('assets/program_icon.ico', format='ICO', sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])
+          print('Windows icon rebuilt')
+          '@ | python -
+
+      - name: Validate Python source
+        run: python -m py_compile main.py updater.py face_engine.py download_models.py
 
       - name: Build main program
         shell: cmd
@@ -68,6 +87,7 @@ jobs:
           --hidden-import pythoncom
           --hidden-import pywintypes
           --collect-all openpyxl
+          --collect-all reportlab
           --collect-submodules win32com
           main.py
 
@@ -89,6 +109,7 @@ jobs:
         run: |
           if (!(Test-Path "dist/PhotoArchiveCatalog.exe")) { throw "Main EXE was not created" }
           if (!(Test-Path "dist/PhotoArchiveCatalogUpdater.exe")) { throw "Updater EXE was not created" }
+          Get-Content version.txt
           Get-Item "dist/PhotoArchiveCatalog.exe", "dist/PhotoArchiveCatalogUpdater.exe" | Format-Table Name,Length,FullName
 
       - name: Install Inno Setup
