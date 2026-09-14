@@ -7,7 +7,7 @@ on:
       - main
 
 env:
-  APP_VERSION: "6.0.5"
+  APP_VERSION: "6.0.6"
 
 jobs:
   build:
@@ -18,18 +18,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare v6.0.5 source payload
+      - name: Prepare v6.0.6 source payload
         shell: powershell
         run: |
-          $parts = Get-ChildItem ".build\v605\payload_*.txt" | Sort-Object Name
+          $parts = Get-ChildItem ".build\v606\payload_*.txt" | Sort-Object Name
           if ($parts.Count -ne 7) { throw "Expected 7 payload chunks, found $($parts.Count)" }
           $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ""
           $bytes = [Convert]::FromBase64String($b64)
-          $zip = Join-Path $env:RUNNER_TEMP "v605_source.zip"
+          $zip = Join-Path $env:RUNNER_TEMP "v606_source.zip"
           [IO.File]::WriteAllBytes($zip, $bytes)
           Expand-Archive -Path $zip -DestinationPath . -Force
           if (!(Test-Path "main.py")) { throw "main.py was not extracted" }
-          Write-Host "v6.0.5 source prepared"
+          Write-Host "v6.0.6 source prepared"
           Get-Content version.txt
 
       - name: Set up Python 3.8 x64
