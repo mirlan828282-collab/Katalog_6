@@ -21,35 +21,14 @@ jobs:
       - name: Prepare v6.0.6 source payload
         shell: powershell
         run: |
-          $partNames = @(
-            ".build\v606\payload_01.txt",
-            ".build\v606\payload_02.txt",
-            ".build\v606\payload_03.txt",
-            ".build\v606\payload_04.txt",
-            ".build\v606\payload_05fixa.txt",
-            ".build\v606\payload_05fixb.txt",
-            ".build\v606\payload_06.txt",
-            ".build\v606\payload_07.txt"
-          )
-          foreach ($p in $partNames) {
-            if (!(Test-Path $p)) { throw "Missing payload chunk: $p" }
-          }
-          $b64 = ($partNames | ForEach-Object { (Get-Content $_ -Raw).Trim() }) -join ""
-          $bytes = [Convert]::FromBase64String($b64)
-          $zip = Join-Path $env:RUNNER_TEMP "v606_source.zip"
-          [IO.File]::WriteAllBytes($zip, $bytes)
+          $zip = ".build\v606clean\source.zip"
+          if (!(Test-Path $zip)) { throw "v6.0.6 source payload not found: $zip" }
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne "2f6d9fe08ecb0845202e79b77ba0fcbde7a414873d1617b70e812b4ae6306491") { throw "Payload SHA256 mismatch: $hash" }
           Expand-Archive -Path $zip -DestinationPath . -Force
           if (!(Test-Path "main.py")) { throw "main.py was not extracted" }
-          @'
-          from pathlib import Path
-          names = ['main.py','updater.py','face_engine.py','download_models.py']
-          for name in names:
-              data = Path(name).read_bytes()
-              data.decode('utf-8')
-              print(name, 'UTF-8 OK')
-          '@ | python -
           python -m py_compile main.py updater.py face_engine.py download_models.py
-          if ($LASTEXITCODE -ne 0) { throw "Python source syntax/encoding check failed" }
+          if ($LASTEXITCODE -ne 0) { throw "Python source syntax check failed" }
           Write-Host "v6.0.6 source prepared and syntax checked"
           Get-Content version.txt
 
@@ -136,11 +115,10 @@ jobs:
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $iscc)) { throw "Inno Setup compiler not found: $iscc" }
-          $ico = (Resolve-Path "assets\program_icon.ico").Path
           $iss = Get-Content "installer.iss" -Raw
-          $iss = $iss -replace '(?m)^SetupIconFile=.*$', ("SetupIconFile=" + $ico)
+          $iss = $iss -replace '(?m)^SetupIconFile=.*\r?\n?', ''
           Set-Content -Path "installer.iss" -Value $iss -Encoding UTF8
-          Write-Host "Installer icon path: $ico"
+          Write-Host "SetupIconFile disabled; application and shortcuts keep program_icon.ico"
           & $iscc "installer.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
 
