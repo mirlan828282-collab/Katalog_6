@@ -21,15 +21,27 @@ jobs:
       - name: Prepare v6.0.6 source payload
         shell: powershell
         run: |
-          $parts = Get-ChildItem ".build\v606\payload_*.txt" | Sort-Object Name
-          if ($parts.Count -ne 7) { throw "Expected 7 payload chunks, found $($parts.Count)" }
-          $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ""
+          $partNames = @(
+            ".build\v606\payload_01.txt",
+            ".build\v606\payload_02.txt",
+            ".build\v606\payload_03.txt",
+            ".build\v606\payload_04.txt",
+            ".build\v606\payload_05a.txt",
+            ".build\v606\payload_05b.txt",
+            ".build\v606\payload_06.txt",
+            ".build\v606\payload_07.txt"
+          )
+          foreach ($p in $partNames) {
+            if (!(Test-Path $p)) { throw "Missing payload chunk: $p" }
+          }
+          $b64 = ($partNames | ForEach-Object { (Get-Content $_ -Raw).Trim() }) -join ""
           $bytes = [Convert]::FromBase64String($b64)
           $zip = Join-Path $env:RUNNER_TEMP "v606_source.zip"
           [IO.File]::WriteAllBytes($zip, $bytes)
           Expand-Archive -Path $zip -DestinationPath . -Force
           if (!(Test-Path "main.py")) { throw "main.py was not extracted" }
-          Write-Host "v6.0.6 source prepared"
+          python -m py_compile main.py updater.py face_engine.py download_models.py
+          Write-Host "v6.0.6 source prepared and syntax checked"
           Get-Content version.txt
 
       - name: Set up Python 3.8 x64
@@ -115,6 +127,11 @@ jobs:
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $iscc)) { throw "Inno Setup compiler not found: $iscc" }
+          $ico = (Resolve-Path "assets\program_icon.ico").Path
+          $iss = Get-Content "installer.iss" -Raw
+          $iss = $iss -replace '(?m)^SetupIconFile=.*$', ("SetupIconFile=" + $ico)
+          Set-Content -Path "installer.iss" -Value $iss -Encoding UTF8
+          Write-Host "Installer icon path: $ico"
           & $iscc "installer.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
 
