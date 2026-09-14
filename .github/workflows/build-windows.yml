@@ -21,8 +21,29 @@ jobs:
       - name: Prepare v6.0.6 source payload
         shell: powershell
         run: |
-          $zip = ".build\v606clean\source.zip"
-          if (!(Test-Path $zip)) { throw "v6.0.6 source payload not found: $zip" }
+          $partNames = @(
+            ".build\v606\payload_01.txt",
+            ".build\v606\payload_02.txt",
+            ".build\v606\payload_03.txt",
+            ".build\v606\payload_04.txt",
+            ".build\v606\payload_05fixa.txt",
+            ".build\v606\payload_05b1.txt",
+            ".build\v606\payload_05b2.txt",
+            ".build\v606\payload_05b3.txt",
+            ".build\v606\payload_05b4_1.txt",
+            ".build\v606\payload_05b4_2.txt",
+            ".build\v606\payload_05b4_3.txt",
+            ".build\v606\payload_05b4_4fix.txt",
+            ".build\v606\payload_06.txt",
+            ".build\v606\payload_07.txt"
+          )
+          foreach ($p in $partNames) {
+            if (!(Test-Path $p)) { throw "Missing payload chunk: $p" }
+          }
+          $b64 = ($partNames | ForEach-Object { (Get-Content $_ -Raw).Trim() }) -join ""
+          $bytes = [Convert]::FromBase64String($b64)
+          $zip = Join-Path $env:RUNNER_TEMP "v606_source.zip"
+          [IO.File]::WriteAllBytes($zip, $bytes)
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           if ($hash -ne "2f6d9fe08ecb0845202e79b77ba0fcbde7a414873d1617b70e812b4ae6306491") { throw "Payload SHA256 mismatch: $hash" }
           Expand-Archive -Path $zip -DestinationPath . -Force
