@@ -26,8 +26,8 @@ jobs:
             ".build\v606\payload_02.txt",
             ".build\v606\payload_03.txt",
             ".build\v606\payload_04.txt",
-            ".build\v606\payload_05a.txt",
-            ".build\v606\payload_05b.txt",
+            ".build\v606\payload_05fixa.txt",
+            ".build\v606\payload_05fixb.txt",
             ".build\v606\payload_06.txt",
             ".build\v606\payload_07.txt"
           )
@@ -40,7 +40,16 @@ jobs:
           [IO.File]::WriteAllBytes($zip, $bytes)
           Expand-Archive -Path $zip -DestinationPath . -Force
           if (!(Test-Path "main.py")) { throw "main.py was not extracted" }
+          @'
+          from pathlib import Path
+          names = ['main.py','updater.py','face_engine.py','download_models.py']
+          for name in names:
+              data = Path(name).read_bytes()
+              data.decode('utf-8')
+              print(name, 'UTF-8 OK')
+          '@ | python -
           python -m py_compile main.py updater.py face_engine.py download_models.py
+          if ($LASTEXITCODE -ne 0) { throw "Python source syntax/encoding check failed" }
           Write-Host "v6.0.6 source prepared and syntax checked"
           Get-Content version.txt
 
