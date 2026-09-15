@@ -7,7 +7,7 @@ on:
       - main
 
 env:
-  APP_VERSION: "6.0.7"
+  APP_VERSION: "6.0.8"
 
 jobs:
   build:
@@ -18,34 +18,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare v6.0.7 source payload
+      - name: Prepare v6.0.8 source payload
         shell: powershell
         run: |
           $partNames = @(
-            ".build\v607\payload_00.txt",
-            ".build\v607\payload_01.txt",
-            ".build\v607\payload_02.txt",
-            ".build\v607\payload_03.txt",
-            ".build\v607\payload_04q1.txt",
-            ".build\v607\payload_04q2.txt",
-            ".build\v607\payload_04q3.txt",
-            ".build\v607\payload_04q4.txt",
-            ".build\v607\payload_05.txt",
-            ".build\v607\payload_06.txt",
-            ".build\v607\payload_07.txt"
+            ".build\v608\payload_01.txt",
+            ".build\v608\payload_02.txt",
+            ".build\v608\payload_03.txt",
+            ".build\v608\payload_04.txt",
+            ".build\v608\payload_05.txt"
           )
           foreach ($p in $partNames) {
             if (!(Test-Path $p)) { throw "Missing payload chunk: $p" }
           }
           $b64 = ($partNames | ForEach-Object { (Get-Content $_ -Raw).Trim() }) -join ""
           $bytes = [Convert]::FromBase64String($b64)
-          $zip = Join-Path $env:RUNNER_TEMP "v607_source.zip"
+          $zip = Join-Path $env:RUNNER_TEMP "v608_source.zip"
           [IO.File]::WriteAllBytes($zip, $bytes)
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          if ($hash -ne "a2ab4f78b439dd1ba2763fc7c3a0dc4b018e8f86d8ed64bd8df5ef49d3d995b0") { throw "Payload SHA256 mismatch: $hash" }
+          if ($hash -ne "0046cf283a349819b455d1f2da59dde6ca619f5da40a7ba900b372a756085ef2") { throw "Payload SHA256 mismatch: $hash" }
           Expand-Archive -Path $zip -DestinationPath . -Force
           if (!(Test-Path "main.py")) { throw "main.py was not extracted" }
-          Write-Host "v6.0.7 source prepared"
+          Write-Host "v6.0.8 source prepared"
           Get-Content version.txt
 
       - name: Set up Python 3.8 x64
