@@ -1,5 +1,5 @@
-#define MyAppName "PhotoArchiveCatalog"
-#define MyAppVersion "6.0.2"
+#define MyAppName "ФОТОКАТАЛОГ"
+#define MyAppVersion "6.0.8"
 #define MyAppPublisher "Archive of the President of the Kyrgyz Republic"
 #define MyAppExeName "PhotoArchiveCatalog.exe"
 
@@ -9,13 +9,13 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\PhotoArchiveCatalog
-DefaultGroupName=PhotoArchiveCatalog
+DefaultGroupName=ФОТОКАТАЛОГ
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 OutputDir=installer_output
 OutputBaseFilename=PhotoArchiveCatalog_Setup_v{#MyAppVersion}
 SetupIconFile=assets\program_icon.ico
-UninstallDisplayIcon={app}\PhotoArchiveCatalog.exe
+UninstallDisplayIcon={app}\program_icon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -34,6 +34,7 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 [Files]
 Source: "dist\PhotoArchiveCatalog.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\PhotoArchiveCatalogUpdater.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "assets\program_icon.ico"; DestDir: "{app}"; DestName: "program_icon.ico"; Flags: ignoreversion
 
 [Dirs]
 Name: "{userdocs}\PhotoArchiveCatalog"
@@ -46,9 +47,15 @@ Name: "{userdocs}\PhotoArchiveCatalog\Logs"
 Name: "{userdocs}\PhotoArchiveCatalog\Cache"
 Name: "{userdocs}\PhotoArchiveCatalog\Cache\Thumbs"
 
+[InstallDelete]
+Type: files; Name: "{group}\PhotoArchiveCatalog.lnk"
+Type: files; Name: "{group}\ФОТОКАТАЛОГ.lnk"
+Type: files; Name: "{autodesktop}\PhotoArchiveCatalog.lnk"
+Type: files; Name: "{autodesktop}\ФОТОКАТАЛОГ.lnk"
+
 [Icons]
-Name: "{group}\PhotoArchiveCatalog"; Filename: "{app}\PhotoArchiveCatalog.exe"; WorkingDir: "{app}"; IconFilename: "{app}\PhotoArchiveCatalog.exe"
-Name: "{autodesktop}\PhotoArchiveCatalog"; Filename: "{app}\PhotoArchiveCatalog.exe"; WorkingDir: "{app}"; IconFilename: "{app}\PhotoArchiveCatalog.exe"; Tasks: desktopicon
+Name: "{group}\ФОТОКАТАЛОГ"; Filename: "{app}\PhotoArchiveCatalog.exe"; WorkingDir: "{app}"; IconFilename: "{app}\program_icon.ico"; IconIndex: 0
+Name: "{autodesktop}\ФОТОКАТАЛОГ"; Filename: "{app}\PhotoArchiveCatalog.exe"; WorkingDir: "{app}"; IconFilename: "{app}\program_icon.ico"; IconIndex: 0; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\PhotoArchiveCatalog.exe"; Description: "Запустить PhotoArchiveCatalog"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\PhotoArchiveCatalog.exe"; Description: "Запустить ФОТОКАТАЛОГ"; Flags: nowait postinstall skipifsilent

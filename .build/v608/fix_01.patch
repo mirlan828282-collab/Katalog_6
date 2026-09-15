@@ -1,0 +1,76 @@
+--- a/main.py
++++ b/main.py
+@@ -139,7 +139,7 @@
+ 
+ 
+ def repair_windows_shortcuts():
+-    """Repair existing Windows shortcuts so they use the archive icon, not Python."""
++    """Repair old/garbled shortcuts and keep the visible name ФОТОКАТАЛОГ."""
+     if sys.platform != 'win32' or not getattr(sys,'frozen',False):
+         return
+     try:
+@@ -149,24 +149,35 @@
+             return
+         import win32com.client
+         shell=win32com.client.Dispatch('WScript.Shell')
+-        candidates=[]
+-        # Keep internal EXE/data paths for update compatibility, but expose the requested name ФОТОКАТАЛОГ.
++
++        # Scan only Desktop and Start-menu shortcut folders. Any shortcut that
++        # actually targets our EXE is recreated with the correct Cyrillic name.
++        folders=[]
+         for base in [os.environ.get('USERPROFILE'), os.environ.get('PUBLIC')]:
+             if base:
+-                desk=Path(base)/'Desktop'
+-                candidates.extend([(desk/'PhotoArchiveCatalog.lnk',desk/'ФОТОКАТАЛОГ.lnk'),(desk/'ФОТОКАТАЛОГ.lnk',desk/'ФОТОКАТАЛОГ.lnk')])
+-        appdata=os.environ.get('APPDATA'); programdata=os.environ.get('PROGRAMDATA')
+-        for root in [appdata,programdata]:
++                folders.append((Path(base)/'Desktop', False))
++        for root in [os.environ.get('APPDATA'), os.environ.get('PROGRAMDATA')]:
+             if root:
+-                olddir=Path(root)/'Microsoft'/'Windows'/'Start Menu'/'Programs'/'PhotoArchiveCatalog'
+-                newdir=Path(root)/'Microsoft'/'Windows'/'Start Menu'/'Programs'/'ФОТОКАТАЛОГ'
+-                candidates.extend([(olddir/'PhotoArchiveCatalog.lnk',olddir/'ФОТОКАТАЛОГ.lnk'),(olddir/'ФОТОКАТАЛОГ.lnk',olddir/'ФОТОКАТАЛОГ.lnk'),(newdir/'ФОТОКАТАЛОГ.lnk',newdir/'ФОТОКАТАЛОГ.lnk')])
+-        for link,target_link in candidates:
++                folders.append((Path(root)/'Microsoft'/'Windows'/'Start Menu'/'Programs', True))
++
++        seen=set()
++        for folder,recursive in folders:
+             try:
+-                if not link.exists():continue
+-                target_link.parent.mkdir(parents=True,exist_ok=True)
+-                sc=shell.CreateShortcut(str(target_link));sc.TargetPath=str(exe);sc.WorkingDirectory=str(exe.parent);sc.IconLocation=f'{icon},0';sc.Save()
+-                if link!=target_link and link.exists():link.unlink()
++                if not folder.exists():continue
++                links=folder.rglob('*.lnk') if recursive else folder.glob('*.lnk')
++                for link in list(links):
++                    try:
++                        if str(link).lower() in seen:continue
++                        seen.add(str(link).lower())
++                        old=shell.CreateShortcut(str(link))
++                        target=safe_text(getattr(old,'TargetPath',''))
++                        if not target or Path(target).name.casefold()!='photoarchivecatalog.exe':
++                            continue
++                        desired=link.with_name('ФОТОКАТАЛОГ.lnk')
++                        sc=shell.CreateShortcut(str(desired))
++                        sc.TargetPath=str(exe);sc.WorkingDirectory=str(exe.parent);sc.IconLocation=f'{icon},0';sc.Save()
++                        if link!=desired and link.exists():link.unlink()
++                    except Exception:pass
+             except Exception:pass
+     except Exception:
+         pass
+@@ -962,10 +973,15 @@
+         self.style.map('Primary.TButton', background=[('active',self._shade(primary,-10)),('pressed',self._shade(primary,-20))])
+         self.style.configure('Soft.TButton', background=soft, foreground=fg, padding=(9,6), relief='flat')
+         self.style.map('Soft.TButton', background=[('active',self._shade(soft,-10)),('pressed',self._shade(soft,-20))])
+-        self.style.configure('Undo.TButton', background=soft, foreground=fg, padding=(7,4), relief='solid', borderwidth=1, font=('Arial',max(9,font_size-1)))
+-        self.style.map('Undo.TButton', background=[('active',self._shade(soft,-12)),('pressed',self._shade(soft,-22))])
+-        self.style.configure('Redo.TButton', background=soft, foreground=fg, padding=(7,4), relief='solid', borderwidth=1, font=('Arial',max(9,font_size-1)))
+-        self.style.map('Redo.TButton', background=[('active',self._shade(soft,-12)),('pressed',self._shade(soft,-22))])
++        # Undo/redo: the selected flat style — only compact symbols, no heavy frame.
++        self.style.configure('Undo.TButton', background=soft, foreground=fg, padding=(6,3), relief='flat', borderwidth=0, font=('Segoe UI Symbol',14,'bold'))
++        self.style.map('Undo.TButton', background=[('active',self._shade(soft,-8)),('pressed',self._shade(soft,-16))])
++        self.style.configure('Redo.TButton', background=soft, foreground=fg, padding=(6,3), relief='flat', borderwidth=0, font=('Segoe UI Symbol',14,'bold'))
++        self.style.map('Redo.TButton', background=[('active',self._shade(soft,-8)),('pressed',self._shade(soft,-16))])
++        # Compact Access-like record navigator.
++        self.style.configure('RecordNav.TButton', background=soft, foreground=fg, padding=(5,2), relief='flat', borderwidth=0, font=('Arial',10,'bold'))

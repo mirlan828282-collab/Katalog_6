@@ -1,0 +1,29 @@
++        values={'archive_no':'Архивный номер: —','shot_date':'Дата съёмки: —','location':'Место съёмки: —','author':'Автор: —','source':'Источник поступления: —'}
+         if sel:
+             r=self.db.get(int(sel[0]))
+             if r:
+-                text=(f"Архивный номер: {safe_text(r['archive_no'])}\n"
+-                      f"Дата съёмки: {safe_text(r['shot_date'])}\n"
+-                      f"Место съёмки: {safe_text(r['location'])}\n"
+-                      f"Автор: {safe_text(r['author'])}\n"
+-                      f"Источник поступления: {safe_text(r['source'])}\n\n"
+-                      f"Описание:\n{safe_text(r['description'])}")
++                desc=safe_text(r['description'])
++                values={
++                    'archive_no':f"Архивный номер: {safe_text(r['archive_no'])}",
++                    'shot_date':f"Дата съёмки: {safe_text(r['shot_date'])}",
++                    'location':f"Место съёмки: {safe_text(r['location'])}",
++                    'author':f"Автор: {safe_text(r['author'])}",
++                    'source':f"Источник поступления: {safe_text(r['source'])}",
++                }
+         self.description_text.configure(state='normal')
+         self.description_text.delete('1.0','end')
+-        self.description_text.insert('1.0',text)
++        self.description_text.insert('1.0',desc)
+         self.description_text.configure(state='disabled')
+         self.description_text.yview_moveto(0)
++        for key,var in getattr(self,'catalog_meta_vars',{}).items():
++            var.set(values.get(key,''))
+ 
+     def new_search(self):
+         self.cell_selection.clear(); self.cell_anchor=None; self.active_cell=None; self.refresh()

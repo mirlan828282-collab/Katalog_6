@@ -18,20 +18,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare v6.0.8 source payload
+      - name: Prepare v6.0.8 source and final corrections
         shell: powershell
         run: |
-          $partNames = @(
+          $payloadParts = @(
             ".build\v608\payload_01.txt",
             ".build\v608\payload_02.txt",
             ".build\v608\payload_03.txt",
             ".build\v608\payload_04.txt",
             ".build\v608\payload_05.txt"
           )
-          foreach ($p in $partNames) {
+          foreach ($p in $payloadParts) {
             if (!(Test-Path $p)) { throw "Missing payload chunk: $p" }
           }
-          $b64 = ($partNames | ForEach-Object { (Get-Content $_ -Raw).Trim() }) -join ""
+          $b64 = ($payloadParts | ForEach-Object { (Get-Content $_ -Raw).Trim() }) -join ""
           $bytes = [Convert]::FromBase64String($b64)
           $zip = Join-Path $env:RUNNER_TEMP "v608_source.zip"
           [IO.File]::WriteAllBytes($zip, $bytes)
@@ -39,7 +39,24 @@ jobs:
           if ($hash -ne "0046cf283a349819b455d1f2da59dde6ca619f5da40a7ba900b372a756085ef2") { throw "Payload SHA256 mismatch: $hash" }
           Expand-Archive -Path $zip -DestinationPath . -Force
           if (!(Test-Path "main.py")) { throw "main.py was not extracted" }
-          Write-Host "v6.0.8 source prepared"
+
+          $patchParts = @(
+            ".build\v608\fix_01.patch",
+            ".build\v608\fix_02.patch",
+            ".build\v608\fix_03.patch",
+            ".build\v608\fix_04.patch",
+            ".build\v608\fix_05.patch"
+          )
+          foreach ($p in $patchParts) {
+            if (!(Test-Path $p)) { throw "Missing correction patch chunk: $p" }
+          }
+          $patchText = ($patchParts | ForEach-Object { Get-Content $_ -Raw -Encoding UTF8 }) -join ""
+          $patchFile = Join-Path $env:RUNNER_TEMP "v608_final.patch"
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [IO.File]::WriteAllText($patchFile, $patchText, $utf8NoBom)
+          git apply --whitespace=nowarn $patchFile
+          if ($LASTEXITCODE -ne 0) { throw "Final v6.0.8 correction patch failed" }
+          Write-Host "v6.0.8 final corrections applied"
           Get-Content version.txt
 
       - name: Set up Python 3.8 x64
@@ -47,16 +64,14 @@ jobs:
         with:
           python-version: '3.8'
           architecture: 'x64'
-          cache: 'pip'
 
       - name: Validate Python source
         run: python -m py_compile main.py updater.py face_engine.py download_models.py
 
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
-
       - name: Install dependencies
-        run: python -m pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
 
       - name: Normalize Windows application icon
         shell: powershell
@@ -123,18 +138,15 @@ jobs:
         shell: powershell
         run: choco install innosetup -y --no-progress
 
-      - name: Build installer
+      - name: Build installer with correct Russian text
         shell: powershell
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $iscc)) { throw "Inno Setup compiler not found: $iscc" }
-          # installer.iss is stored as UTF-8. Read it explicitly as UTF-8 so Russian text is not mojibake.
           $iss = Get-Content "installer.iss" -Raw -Encoding UTF8
           $iss = $iss -replace '(?m)^SetupIconFile=.*\r?\n?', ''
-          # Inno Setup reliably detects UTF-8 when the script has a BOM.
           $utf8bom = New-Object System.Text.UTF8Encoding($true)
-          [System.IO.File]::WriteAllText((Resolve-Path "installer.iss").Path, $iss, $utf8bom)
-          Write-Host "installer.iss normalized to UTF-8 BOM; Russian installer strings preserved"
+          [IO.File]::WriteAllText((Resolve-Path "installer.iss").Path, $iss, $utf8bom)
           & $iscc "installer.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
 
