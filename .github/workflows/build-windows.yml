@@ -128,10 +128,13 @@ jobs:
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $iscc)) { throw "Inno Setup compiler not found: $iscc" }
-          $iss = Get-Content "installer.iss" -Raw
+          # installer.iss is stored as UTF-8. Read it explicitly as UTF-8 so Russian text is not mojibake.
+          $iss = Get-Content "installer.iss" -Raw -Encoding UTF8
           $iss = $iss -replace '(?m)^SetupIconFile=.*\r?\n?', ''
-          Set-Content -Path "installer.iss" -Value $iss -Encoding UTF8
-          Write-Host "SetupIconFile disabled; application and shortcuts keep program_icon.ico"
+          # Inno Setup reliably detects UTF-8 when the script has a BOM.
+          $utf8bom = New-Object System.Text.UTF8Encoding($true)
+          [System.IO.File]::WriteAllText((Resolve-Path "installer.iss").Path, $iss, $utf8bom)
+          Write-Host "installer.iss normalized to UTF-8 BOM; Russian installer strings preserved"
           & $iscc "installer.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
 
