@@ -1,64 +1,59 @@
-@@ -2374,8 +2397,8 @@
-         e=ttk.Entry(top1,textvariable=self.q,width=40);e.pack(side='left',padx=6);e.bind('<Return>',lambda x:self.new_search())
-         ttk.Button(top1,text='Найти',style='CompactPrimary.TButton',command=self.new_search).pack(side='left')
-         ttk.Button(top1,text='Добавить строки',style='Compact.TButton',command=self.add_rows).pack(side='left',padx=(5,0))
--        ttk.Button(top1,text='Отменить',style='Undo.TButton',command=self.app.undo_action).pack(side='left',padx=(5,0))
--        ttk.Button(top1,text='Вернуть',style='Redo.TButton',command=self.app.redo_action).pack(side='left',padx=3)
-+        ttk.Button(top1,text='↶',style='Undo.TButton',width=3,command=self.app.undo_action).pack(side='left',padx=(5,1))
-+        ttk.Button(top1,text='↷',style='Redo.TButton',width=3,command=self.app.redo_action).pack(side='left',padx=1)
-         ttk.Button(top1,text='Найти / заменить',style='Compact.TButton',command=self.open_find_replace).pack(side='left',padx=(3,0))
-         ttk.Label(top1,text='Двойной клик / F2 — редактировать • Ctrl+V — вставить • Правый клик — действия',style='Hint.TLabel').pack(side='right')
- 
-@@ -2403,7 +2426,7 @@
-         self.tree.configure(yscrollcommand=self._tree_yscroll,xscrollcommand=self._tree_xscroll)
-         self.tree.grid(row=0,column=0,sticky='nsew');ys.grid(row=0,column=1,sticky='ns');xs.grid(row=1,column=0,sticky='ew')
-         fr.rowconfigure(0,weight=1);fr.columnconfigure(0,weight=1)
--        self.tree.bind('<Double-1>',self.on_double_click)
-+        self.tree.bind('<Double-Button-1>',self.on_double_click)
-         self.tree.bind('<Button-1>',self.cell_select_click,add='+')
-         self.tree.bind('<ButtonRelease-1>',self.click_open)
-         self.tree.bind('<<TreeviewSelect>>',self.show_selected_description)
-@@ -2419,12 +2442,23 @@
-         self.tree.bind('<Configure>',lambda e:self._schedule_overlays(),add='+')
-         self._cell_editor=None
- 
--        desc_box=ttk.LabelFrame(catalog_body,text='Полное описание выбранной записи',padding=7,style='Card.TLabelframe')
-+        desc_box=ttk.LabelFrame(catalog_body,text='Полное описание выбранной записи',padding=8,style='Card.TLabelframe')
-         catalog_body.add(desc_box,weight=1)
--        self.description_text=tk.Text(desc_box,height=6,wrap='word',state='disabled',font=('Arial',11),spacing1=4,spacing3=6,padx=12,pady=10,borderwidth=1,relief='solid')
--        desc_scroll=ttk.Scrollbar(desc_box,orient='vertical',command=self.description_text.yview)
-+        ttk.Label(desc_box,text='Описание',font=('Arial',int(app.settings.get('font_size',11)),'bold')).grid(row=0,column=0,columnspan=2,sticky='w',pady=(0,4))
-+        desc_frame=ttk.Frame(desc_box);desc_frame.grid(row=1,column=0,columnspan=2,sticky='nsew',pady=(0,7))
-+        self.description_text=tk.Text(desc_frame,height=4,wrap='word',state='disabled',font=('Arial',11),spacing1=4,spacing3=6,padx=12,pady=9,borderwidth=1,relief='solid')
-+        desc_scroll=ttk.Scrollbar(desc_frame,orient='vertical',command=self.description_text.yview)
-         self.description_text.configure(yscrollcommand=desc_scroll.set)
-         self.description_text.pack(side='left',fill='both',expand=True); desc_scroll.pack(side='right',fill='y')
-+        self.catalog_meta_vars={k:tk.StringVar(value='') for k in ('archive_no','shot_date','location','author','source')}
-+        meta=ttk.Frame(desc_box,padding=(2,1,2,0));meta.grid(row=2,column=0,columnspan=2,sticky='ew')
-+        meta.columnconfigure(0,weight=1);meta.columnconfigure(1,weight=1)
-+        ttk.Label(meta,textvariable=self.catalog_meta_vars['archive_no']).grid(row=0,column=0,sticky='w',padx=(0,14),pady=2)
-+        ttk.Label(meta,textvariable=self.catalog_meta_vars['shot_date']).grid(row=0,column=1,sticky='w',pady=2)
-+        ttk.Label(meta,textvariable=self.catalog_meta_vars['location']).grid(row=1,column=0,sticky='w',padx=(0,14),pady=2)
-+        ttk.Label(meta,textvariable=self.catalog_meta_vars['author']).grid(row=1,column=1,sticky='w',pady=2)
-+        ttk.Label(meta,textvariable=self.catalog_meta_vars['source']).grid(row=2,column=0,columnspan=2,sticky='w',pady=(2,0))
-+        desc_box.columnconfigure(0,weight=1);desc_box.columnconfigure(1,weight=1);desc_box.rowconfigure(1,weight=1)
-         self._make_context_menu()
++        ttk.Label(form,text='Описание фотографии',font=('Arial',int(app.settings.get('font_size',11)),'bold')).grid(row=row,column=0,columnspan=2,sticky='w',pady=(4,0));row+=1
++        desc_frame=ttk.Frame(form); desc_frame.grid(row=row,column=0,columnspan=2,sticky='nsew',pady=(4,8))
++        self.desc=tk.Text(desc_frame,height=5,wrap='word',font=('Arial',int(app.settings.get('font_size',11))),padx=10,pady=8,spacing1=3,spacing3=4,borderwidth=1,relief='solid'); desc_scroll=ttk.Scrollbar(desc_frame,orient='vertical',command=self.desc.yview); self.desc.configure(yscrollcommand=desc_scroll.set)
++        self.desc.pack(side='left',fill='both',expand=True); desc_scroll.pack(side='right',fill='y');desc_row=row;row+=1
++        pf=ttk.LabelFrame(form,text='Фотография',padding=6);pf.grid(row=row,column=0,columnspan=2,sticky='nsew');self.preview=ttk.Label(pf,text='Фото не выбрано',anchor='center');self.preview.pack(fill='both',expand=True)
++        pb=ttk.Frame(pf);pb.pack(fill='x',pady=5);ttk.Button(pb,text='Выбрать/заменить фото',command=self.choose_photo).pack(side='left');ttk.Button(pb,text='Удалить фото',command=self.remove_photo).pack(side='left',padx=5);ttk.Button(pb,text='Открыть',command=lambda:self.app.popup_photo(self.current_path)).pack(side='left');photo_row=row;row+=1
++        act=ttk.Frame(form);act.grid(row=row,column=0,columnspan=2,sticky='ew',pady=6);ttk.Button(act,text='Сохранить',command=self.save).pack(side='left');ttk.Button(act,text='Удалить карточку',command=self.delete).pack(side='left',padx=6);ttk.Button(act,text='Отмена/очистить',command=self.new).pack(side='left')
++        form.columnconfigure(0,weight=1);form.columnconfigure(1,weight=1);form.rowconfigure(desc_row,weight=1);form.rowconfigure(photo_row,weight=1)
+         for e in self.entries.values():
+             e.bind('<KeyRelease>',self.schedule_autosave); e.bind('<FocusOut>',self.schedule_autosave)
+             e.bind('<Control-c>',lambda ev:self._edit_event(ev,'<<Copy>>')); e.bind('<Control-C>',lambda ev:self._edit_event(ev,'<<Copy>>'))
+@@ -1564,6 +1592,36 @@
+             try:widget.bind('<Button-3>',self.show_context_menu)
+             except Exception:pass
          self.status()
++
++    def add_rows(self):
++        count=simpledialog.askinteger(
++            'Добавить строки',
++            'Сколько пустых строк добавить?',
++            parent=self, minvalue=1, maxvalue=10000, initialvalue=10
++        )
++        if not count:
++            return
++        ids=[]
++        try:
++            self.db.conn.execute('BEGIN')
++            for _ in range(int(count)):
++                ids.append(self.db.add({
++                    'archive_no':'','description':'','shot_date':'','location':'',
++                    'author':'','source':'','file_path':''
++                },commit=False))
++            self.db.conn.commit()
++        except Exception as exc:
++            self.db.conn.rollback()
++            messagebox.showerror(APP_NAME,f'Не удалось добавить строки:\n{exc}')
++            return
++        before={int(pid):None for pid in ids}; after=self.db.snapshot_states(ids)
++        self.app.record_history('Добавление пустых строк',before,after)
++        self.q.set('')
++        self.refresh()
++        first=str(ids[0]) if ids else ''
++        if first and self.tree.exists(first):
++            self.tree.selection_set(first); self.tree.focus(first); self.tree.see(first); self.select()
++        self.status_var.set(f'Добавлено пустых строк: {len(ids)}. Ctrl+Z — отменить.')
  
-@@ -2682,7 +2716,9 @@
-         if field:
-             self.active_cell=(str(iid),col); self.cell_anchor=self.active_cell; self.cell_selection={self.active_cell}
-             self.tree.selection_set(iid); self.tree.focus(iid); self._draw_cell_selection()
--            self._begin_cell_edit(iid,col,field)
-+            # Open after Tk finishes the double-click selection sequence. This keeps
-+            # direct cell editing reliable even with custom Ctrl/Shift cell overlays.
-+            self.after_idle(lambda ii=str(iid),cc=col,ff=field:self._begin_cell_edit(ii,cc,ff))
-             return 'break'
- 
-     def edit_active_cell(self,event=None):
-@@ -2821,21 +2857,26 @@
- 
-     def show_selected_description(self,_event=None):
-         sel=self.tree.selection()
--        text=''
-+        desc=''
+     def _make_context_menu(self):
+         self.context_menu=tk.Menu(self,tearoff=0)
+@@ -2337,12 +2395,12 @@
+         self.q=tk.StringVar()
+         ttk.Label(top1,text='Поиск:').pack(side='left')
+         e=ttk.Entry(top1,textvariable=self.q,width=40);e.pack(side='left',padx=6);e.bind('<Return>',lambda x:self.new_search())
+-        ttk.Button(top1,text='Найти',style='Primary.TButton',command=self.new_search).pack(side='left')
+-        ttk.Button(top1,text='+ Добавить строки',style='Soft.TButton',command=self.add_rows).pack(side='left',padx=(8,0))
+-        ttk.Button(top1,text='Отменить',style='Undo.TButton',command=self.app.undo_action).pack(side='left',padx=(8,0))
+-        ttk.Button(top1,text='Вернуть',style='Redo.TButton',command=self.app.redo_action).pack(side='left',padx=4)
+-        ttk.Button(top1,text='Найти и заменить…',style='Soft.TButton',command=self.open_find_replace).pack(side='left',padx=(4,0))
+-        ttk.Label(top1,text='Двойной клик — редактировать • Ctrl+V — вставить таблицу • Правый клик — действия',style='Hint.TLabel').pack(side='right')
++        ttk.Button(top1,text='Найти',style='CompactPrimary.TButton',command=self.new_search).pack(side='left')

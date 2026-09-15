@@ -59,18 +59,14 @@
              except Exception:pass
      except Exception:
          pass
-@@ -962,10 +973,15 @@
+@@ -962,10 +973,19 @@
          self.style.map('Primary.TButton', background=[('active',self._shade(primary,-10)),('pressed',self._shade(primary,-20))])
          self.style.configure('Soft.TButton', background=soft, foreground=fg, padding=(9,6), relief='flat')
          self.style.map('Soft.TButton', background=[('active',self._shade(soft,-10)),('pressed',self._shade(soft,-20))])
--        self.style.configure('Undo.TButton', background=soft, foreground=fg, padding=(7,4), relief='solid', borderwidth=1, font=('Arial',max(9,font_size-1)))
+-        self.style.configure('Undo.TButton', background=soft, foreground=fg, padding=(13,7), relief='solid', borderwidth=1, font=('Arial',font_size,'bold'))
 -        self.style.map('Undo.TButton', background=[('active',self._shade(soft,-12)),('pressed',self._shade(soft,-22))])
--        self.style.configure('Redo.TButton', background=soft, foreground=fg, padding=(7,4), relief='solid', borderwidth=1, font=('Arial',max(9,font_size-1)))
+-        self.style.configure('Redo.TButton', background=soft, foreground=fg, padding=(13,7), relief='solid', borderwidth=1, font=('Arial',font_size,'bold'))
 -        self.style.map('Redo.TButton', background=[('active',self._shade(soft,-12)),('pressed',self._shade(soft,-22))])
 +        # Undo/redo: the selected flat style — only compact symbols, no heavy frame.
 +        self.style.configure('Undo.TButton', background=soft, foreground=fg, padding=(6,3), relief='flat', borderwidth=0, font=('Segoe UI Symbol',14,'bold'))
 +        self.style.map('Undo.TButton', background=[('active',self._shade(soft,-8)),('pressed',self._shade(soft,-16))])
-+        self.style.configure('Redo.TButton', background=soft, foreground=fg, padding=(6,3), relief='flat', borderwidth=0, font=('Segoe UI Symbol',14,'bold'))
-+        self.style.map('Redo.TButton', background=[('active',self._shade(soft,-8)),('pressed',self._shade(soft,-16))])
-+        # Compact Access-like record navigator.
-+        self.style.configure('RecordNav.TButton', background=soft, foreground=fg, padding=(5,2), relief='flat', borderwidth=0, font=('Arial',10,'bold'))

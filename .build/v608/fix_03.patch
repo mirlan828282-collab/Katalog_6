@@ -1,3 +1,16 @@
+         ttk.Label(top,text='Редактирование карточек',font=('Arial',11,'bold')).pack(side='left')
+-        ttk.Button(top,text='Отменить',style='Undo.TButton',command=self.app.undo_action).pack(side='left',padx=(14,4))
+-        ttk.Button(top,text='Вернуть',style='Redo.TButton',command=self.app.redo_action).pack(side='left',padx=4)
+-        ttk.Button(top,text='Найти и заменить…',style='Soft.TButton',command=self.open_find_replace).pack(side='left',padx=(8,4))
++        ttk.Button(top,text='Добавить строки',style='Compact.TButton',command=self.add_rows).pack(side='left',padx=(12,3))
++        ttk.Button(top,text='↶',style='Undo.TButton',width=3,command=self.app.undo_action).pack(side='left',padx=(4,1))
++        ttk.Button(top,text='↷',style='Redo.TButton',width=3,command=self.app.redo_action).pack(side='left',padx=1)
++        ttk.Button(top,text='Найти / заменить',style='Compact.TButton',command=self.open_find_replace).pack(side='left',padx=(3,4))
+         ttk.Label(top,text='Автосохранение включено • Правый клик — действия и импорт',style='Hint.TLabel').pack(side='right')
+         body=ttk.Panedwindow(self,orient='horizontal');body.pack(fill='both',expand=True,padx=10,pady=(0,8))
+         lf=ttk.Frame(body,padding=5);rf=ttk.Frame(body,padding=8);body.add(lf,weight=2);body.add(rf,weight=3)
+@@ -1537,18 +1558,25 @@
+         for c,t,w in [('seq','№',55),('no','Архивный №',130),('date','Дата',95),('desc','Описание',350)]:self.tree.heading(c,text=t);self.tree.column(c,width=w,anchor='center' if c=='seq' else 'w')
          ys=ttk.Scrollbar(lf,orient='vertical',command=self.tree.yview);self.tree.configure(yscrollcommand=ys.set);self.tree.pack(side='left',fill='both',expand=True,pady=(6,0));ys.pack(side='right',fill='y',pady=(6,0));self.tree.bind('<<TreeviewSelect>>',self.select)
          self.entries={}; form=rf
 +        # Compact editable form: two fields per row where practical.
@@ -22,14 +35,3 @@
 +            row+=2
 +        ttk.Label(form,text='Источник поступления').grid(row=row,column=0,columnspan=2,sticky='w',pady=(2,0))
 +        e=ttk.Entry(form);e.grid(row=row+1,column=0,columnspan=2,sticky='ew',pady=(3,7),ipady=2);self.entries['source']=e;row+=2
-+        ttk.Label(form,text='Описание фотографии',font=('Arial',int(app.settings.get('font_size',11)),'bold')).grid(row=row,column=0,columnspan=2,sticky='w',pady=(4,0));row+=1
-+        desc_frame=ttk.Frame(form); desc_frame.grid(row=row,column=0,columnspan=2,sticky='nsew',pady=(4,8))
-+        self.desc=tk.Text(desc_frame,height=5,wrap='word',font=('Arial',int(app.settings.get('font_size',11))),padx=10,pady=8,spacing1=3,spacing3=4,borderwidth=1,relief='solid'); desc_scroll=ttk.Scrollbar(desc_frame,orient='vertical',command=self.desc.yview); self.desc.configure(yscrollcommand=desc_scroll.set)
-+        self.desc.pack(side='left',fill='both',expand=True); desc_scroll.pack(side='right',fill='y');desc_row=row;row+=1
-+        pf=ttk.LabelFrame(form,text='Фотография',padding=6);pf.grid(row=row,column=0,columnspan=2,sticky='nsew');self.preview=ttk.Label(pf,text='Фото не выбрано',anchor='center');self.preview.pack(fill='both',expand=True)
-+        pb=ttk.Frame(pf);pb.pack(fill='x',pady=5);ttk.Button(pb,text='Выбрать/заменить фото',command=self.choose_photo).pack(side='left');ttk.Button(pb,text='Удалить фото',command=self.remove_photo).pack(side='left',padx=5);ttk.Button(pb,text='Открыть',command=lambda:self.app.popup_photo(self.current_path)).pack(side='left');photo_row=row;row+=1
-+        act=ttk.Frame(form);act.grid(row=row,column=0,columnspan=2,sticky='ew',pady=6);ttk.Button(act,text='Сохранить',command=self.save).pack(side='left');ttk.Button(act,text='Удалить карточку',command=self.delete).pack(side='left',padx=6);ttk.Button(act,text='Отмена/очистить',command=self.new).pack(side='left')
-+        form.columnconfigure(0,weight=1);form.columnconfigure(1,weight=1);form.rowconfigure(desc_row,weight=1);form.rowconfigure(photo_row,weight=1)
-         for e in self.entries.values():
-             e.bind('<KeyRelease>',self.schedule_autosave); e.bind('<FocusOut>',self.schedule_autosave)
-             e.bind('<Control-c>',lambda ev:self._edit_event(ev,'<<Copy>>')); e.bind('<Control-C>',lambda ev:self._edit_event(ev,'<<Copy>>'))

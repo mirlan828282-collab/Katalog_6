@@ -1,29 +1,55 @@
-+        values={'archive_no':'Архивный номер: —','shot_date':'Дата съёмки: —','location':'Место съёмки: —','author':'Автор: —','source':'Источник поступления: —'}
-         if sel:
-             r=self.db.get(int(sel[0]))
-             if r:
--                text=(f"Архивный номер: {safe_text(r['archive_no'])}\n"
--                      f"Дата съёмки: {safe_text(r['shot_date'])}\n"
--                      f"Место съёмки: {safe_text(r['location'])}\n"
--                      f"Автор: {safe_text(r['author'])}\n"
--                      f"Источник поступления: {safe_text(r['source'])}\n\n"
--                      f"Описание:\n{safe_text(r['description'])}")
-+                desc=safe_text(r['description'])
-+                values={
-+                    'archive_no':f"Архивный номер: {safe_text(r['archive_no'])}",
-+                    'shot_date':f"Дата съёмки: {safe_text(r['shot_date'])}",
-+                    'location':f"Место съёмки: {safe_text(r['location'])}",
-+                    'author':f"Автор: {safe_text(r['author'])}",
-+                    'source':f"Источник поступления: {safe_text(r['source'])}",
-+                }
-         self.description_text.configure(state='normal')
-         self.description_text.delete('1.0','end')
--        self.description_text.insert('1.0',text)
-+        self.description_text.insert('1.0',desc)
-         self.description_text.configure(state='disabled')
-         self.description_text.yview_moveto(0)
-+        for key,var in getattr(self,'catalog_meta_vars',{}).items():
-+            var.set(values.get(key,''))
++        ttk.Button(top1,text='Добавить строки',style='Compact.TButton',command=self.add_rows).pack(side='left',padx=(5,0))
++        ttk.Button(top1,text='↶',style='Undo.TButton',width=3,command=self.app.undo_action).pack(side='left',padx=(5,1))
++        ttk.Button(top1,text='↷',style='Redo.TButton',width=3,command=self.app.redo_action).pack(side='left',padx=1)
++        ttk.Button(top1,text='Найти / заменить',style='Compact.TButton',command=self.open_find_replace).pack(side='left',padx=(3,0))
++        ttk.Label(top1,text='Двойной клик / F2 — редактировать • Ctrl+V — вставить • Правый клик — действия',style='Hint.TLabel').pack(side='right')
  
-     def new_search(self):
-         self.cell_selection.clear(); self.cell_anchor=None; self.active_cell=None; self.refresh()
+         top2=ttk.Frame(self,padding=(12,0,12,7));top2.pack(fill='x')
+         ttk.Label(top2,text='Высота строки:').pack(side='left')
+@@ -2368,7 +2426,7 @@
+         self.tree.configure(yscrollcommand=self._tree_yscroll,xscrollcommand=self._tree_xscroll)
+         self.tree.grid(row=0,column=0,sticky='nsew');ys.grid(row=0,column=1,sticky='ns');xs.grid(row=1,column=0,sticky='ew')
+         fr.rowconfigure(0,weight=1);fr.columnconfigure(0,weight=1)
+-        self.tree.bind('<Double-1>',self.on_double_click)
++        self.tree.bind('<Double-Button-1>',self.on_double_click)
+         self.tree.bind('<Button-1>',self.cell_select_click,add='+')
+         self.tree.bind('<ButtonRelease-1>',self.click_open)
+         self.tree.bind('<<TreeviewSelect>>',self.show_selected_description)
+@@ -2378,16 +2436,29 @@
+         self.tree.bind('<Control-a>',self.ctrl_a);self.tree.bind('<Control-A>',self.ctrl_a)
+         self.tree.bind('<Control-c>',self.ctrl_c);self.tree.bind('<Control-C>',self.ctrl_c)
+         self.tree.bind('<Control-v>',self.ctrl_v);self.tree.bind('<Control-V>',self.ctrl_v)
++        self.tree.bind('<F2>',self.edit_active_cell)
++        self.tree.bind('<Return>',self.edit_active_cell)
+         self.tree.bind('<Button-3>',self.show_context_menu)
+         self.tree.bind('<Configure>',lambda e:self._schedule_overlays(),add='+')
+         self._cell_editor=None
+ 
+-        desc_box=ttk.LabelFrame(catalog_body,text='Полное описание выбранной записи',padding=7,style='Card.TLabelframe')
++        desc_box=ttk.LabelFrame(catalog_body,text='Полное описание выбранной записи',padding=8,style='Card.TLabelframe')
+         catalog_body.add(desc_box,weight=1)
+-        self.description_text=tk.Text(desc_box,height=6,wrap='word',state='disabled',font=('Arial',11),spacing1=4,spacing3=6,padx=12,pady=10,borderwidth=1,relief='solid')
+-        desc_scroll=ttk.Scrollbar(desc_box,orient='vertical',command=self.description_text.yview)
++        ttk.Label(desc_box,text='Описание',font=('Arial',int(app.settings.get('font_size',11)),'bold')).grid(row=0,column=0,columnspan=2,sticky='w',pady=(0,4))
++        desc_frame=ttk.Frame(desc_box);desc_frame.grid(row=1,column=0,columnspan=2,sticky='nsew',pady=(0,7))
++        self.description_text=tk.Text(desc_frame,height=4,wrap='word',state='disabled',font=('Arial',11),spacing1=4,spacing3=6,padx=12,pady=9,borderwidth=1,relief='solid')
++        desc_scroll=ttk.Scrollbar(desc_frame,orient='vertical',command=self.description_text.yview)
+         self.description_text.configure(yscrollcommand=desc_scroll.set)
+         self.description_text.pack(side='left',fill='both',expand=True); desc_scroll.pack(side='right',fill='y')
++        self.catalog_meta_vars={k:tk.StringVar(value='') for k in ('archive_no','shot_date','location','author','source')}
++        meta=ttk.Frame(desc_box,padding=(2,1,2,0));meta.grid(row=2,column=0,columnspan=2,sticky='ew')
++        meta.columnconfigure(0,weight=1);meta.columnconfigure(1,weight=1)
++        ttk.Label(meta,textvariable=self.catalog_meta_vars['archive_no']).grid(row=0,column=0,sticky='w',padx=(0,14),pady=2)
++        ttk.Label(meta,textvariable=self.catalog_meta_vars['shot_date']).grid(row=0,column=1,sticky='w',pady=2)
++        ttk.Label(meta,textvariable=self.catalog_meta_vars['location']).grid(row=1,column=0,sticky='w',padx=(0,14),pady=2)
++        ttk.Label(meta,textvariable=self.catalog_meta_vars['author']).grid(row=1,column=1,sticky='w',pady=2)
++        ttk.Label(meta,textvariable=self.catalog_meta_vars['source']).grid(row=2,column=0,columnspan=2,sticky='w',pady=(2,0))
++        desc_box.columnconfigure(0,weight=1);desc_box.columnconfigure(1,weight=1);desc_box.rowconfigure(1,weight=1)
+         self._make_context_menu()
+         self.status()
+ 
+@@ -2643,8 +2714,30 @@
+         field_map={'#3':'archive_no','#4':'description','#5':'shot_date','#6':'location','#7':'author','#8':'source'}
+         field=field_map.get(col)
+         if field:
++            self.active_cell=(str(iid),col); self.cell_anchor=self.active_cell; self.cell_selection={self.active_cell}

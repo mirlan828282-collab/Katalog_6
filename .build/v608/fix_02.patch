@@ -1,9 +1,17 @@
++        self.style.configure('Redo.TButton', background=soft, foreground=fg, padding=(6,3), relief='flat', borderwidth=0, font=('Segoe UI Symbol',14,'bold'))
++        self.style.map('Redo.TButton', background=[('active',self._shade(soft,-8)),('pressed',self._shade(soft,-16))])
++        # Compact Access-like record navigator.
++        self.style.configure('RecordNav.TButton', background=soft, foreground=fg, padding=(5,2), relief='flat', borderwidth=0, font=('Arial',10,'bold'))
 +        self.style.map('RecordNav.TButton', background=[('active',self._shade(soft,-8)),('pressed',self._shade(soft,-16))])
 +        self.style.configure('RecordNav.TEntry', fieldbackground=field, foreground=fg, padding=2, font=('Arial',10))
-         self.style.configure('Compact.TButton', background=soft, foreground=fg, padding=(7,4), relief='solid', borderwidth=1, font=('Arial',max(9,font_size-1)))
-         self.style.map('Compact.TButton', background=[('active',self._shade(soft,-10)),('pressed',self._shade(soft,-20))])
-         self.style.configure('CompactPrimary.TButton', background=primary, foreground='#ffffff', padding=(7,4), relief='solid', borderwidth=1, font=('Arial',max(9,font_size-1),'bold'))
-@@ -1194,21 +1210,21 @@
++        self.style.configure('Compact.TButton', background=soft, foreground=fg, padding=(7,4), relief='solid', borderwidth=1, font=('Arial',max(9,font_size-1)))
++        self.style.map('Compact.TButton', background=[('active',self._shade(soft,-10)),('pressed',self._shade(soft,-20))])
++        self.style.configure('CompactPrimary.TButton', background=primary, foreground='#ffffff', padding=(7,4), relief='solid', borderwidth=1, font=('Arial',max(9,font_size-1),'bold'))
++        self.style.map('CompactPrimary.TButton', background=[('active',self._shade(primary,-10)),('pressed',self._shade(primary,-20))])
+         self.style.configure('Card.TLabelframe', background=field, foreground=fg, relief='solid', borderwidth=1)
+         self.style.configure('Card.TLabelframe.Label', background=bg, foreground=fg, font=('Arial',10,'bold'))
+         self.style.configure('TEntry', fieldbackground=field, foreground=fg, font=('Arial', font_size))
+@@ -1190,21 +1210,21 @@
          ttk.Label(navrow,text='Правый клик — дополнительные действия',style='HeaderHint.TLabel').pack(side='right',padx=(0,12))
  
      def status(self):
@@ -35,16 +43,6 @@
          tree=getattr(self,'tree',None)
          if tree is not None:
              try:tree.bind('<<TreeviewSelect>>',lambda e:self.update_record_nav(),add='+')
-@@ -1531,8 +1547,8 @@
+@@ -1526,9 +1546,10 @@
+         super().__init__(parent,app);self.nav('editor');self.current_id=None;self.current_path='';self.preview_ref=None;self._loading=False;self._autosave_job=None
          top=ttk.Frame(self,padding=(12,4,12,7));top.pack(fill='x')
-         ttk.Label(top,text='Редактирование карточек',font=('Arial',11,'bold')).pack(side='left')
-         ttk.Button(top,text='Добавить строки',style='Compact.TButton',command=self.add_rows).pack(side='left',padx=(12,3))
--        ttk.Button(top,text='Отменить',style='Undo.TButton',command=self.app.undo_action).pack(side='left',padx=3)
--        ttk.Button(top,text='Вернуть',style='Redo.TButton',command=self.app.redo_action).pack(side='left',padx=3)
-+        ttk.Button(top,text='↶',style='Undo.TButton',width=3,command=self.app.undo_action).pack(side='left',padx=(4,1))
-+        ttk.Button(top,text='↷',style='Redo.TButton',width=3,command=self.app.redo_action).pack(side='left',padx=1)
-         ttk.Button(top,text='Найти / заменить',style='Compact.TButton',command=self.open_find_replace).pack(side='left',padx=(3,4))
-         ttk.Label(top,text='Автосохранение включено • Правый клик — действия и импорт',style='Hint.TLabel').pack(side='right')
-         body=ttk.Panedwindow(self,orient='horizontal');body.pack(fill='both',expand=True,padx=10,pady=(0,8))
-@@ -1542,18 +1558,25 @@
-         for c,t,w in [('seq','№',55),('no','Архивный №',130),('date','Дата',95),('desc','Описание',350)]:self.tree.heading(c,text=t);self.tree.column(c,width=w,anchor='center' if c=='seq' else 'w')
