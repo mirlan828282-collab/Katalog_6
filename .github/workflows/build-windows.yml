@@ -7,7 +7,7 @@ on:
       - main
 
 env:
-  APP_VERSION: "6.0.8"
+  APP_VERSION: "6.0.9"
 
 jobs:
   build:
@@ -18,51 +18,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare v6.0.8 final corrected source
+      - name: Prepare v6.0.9 source payload
         shell: powershell
         run: |
           $partNames = @(
-            ".build\v608\payload_01.txt",
-            ".build\v608\payload_02.txt",
-            ".build\v608\payload_03.txt",
-            ".build\v608\payload_04.txt",
-            ".build\v608\payload_05.txt"
+            ".build\v609\payload_01.txt",
+            ".build\v609\payload_02.txt",
+            ".build\v609\payload_03.txt",
+            ".build\v609\payload_04.txt",
+            ".build\v609\payload_05.txt",
+            ".build\v609\payload_06.txt"
           )
           foreach ($p in $partNames) {
             if (!(Test-Path $p)) { throw "Missing payload chunk: $p" }
           }
           $b64 = ($partNames | ForEach-Object { (Get-Content $_ -Raw).Trim() }) -join ""
           $bytes = [Convert]::FromBase64String($b64)
-          $zip = Join-Path $env:RUNNER_TEMP "v608_source.zip"
+          $zip = Join-Path $env:RUNNER_TEMP "v609_source.zip"
           [IO.File]::WriteAllBytes($zip, $bytes)
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          if ($hash -ne "0046cf283a349819b455d1f2da59dde6ca619f5da40a7ba900b372a756085ef2") { throw "Payload SHA256 mismatch: $hash" }
+          if ($hash -ne "59557f2cc22fd83d89bc8bc56a7f8c2dfdf1299cd9f6c894e98e89d7cfcd4936") { throw "Payload SHA256 mismatch: $hash" }
           Expand-Archive -Path $zip -DestinationPath . -Force
           if (!(Test-Path "main.py")) { throw "main.py was not extracted" }
-
-          $patchNames = @(
-            ".build\v608\fix_01.patch",
-            ".build\v608\fix_02.patch",
-            ".build\v608\fix_03.patch",
-            ".build\v608\fix_04.patch",
-            ".build\v608\fix_05.patch",
-            ".build\v608\fix_06.patch"
-          )
-          foreach ($p in $patchNames) {
-            if (!(Test-Path $p)) { throw "Missing correction patch: $p" }
-          }
-          $patchText = ($patchNames | ForEach-Object { Get-Content $_ -Raw -Encoding UTF8 }) -join ""
-          # Git for Windows checks text files out with CRLF. Normalize the patch to LF
-          # because main.py inside the source ZIP uses LF line endings.
-          $patchText = $patchText.Replace("`r`n", "`n").Replace("`r", "`n")
-          $patchFile = Join-Path $env:RUNNER_TEMP "v608_final_correction.patch"
-          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-          [IO.File]::WriteAllText($patchFile, $patchText, $utf8NoBom)
-          git apply --check --ignore-space-change --ignore-whitespace $patchFile
-          if ($LASTEXITCODE -ne 0) { throw "Correction patch check failed" }
-          git apply --whitespace=nowarn --ignore-space-change --ignore-whitespace $patchFile
-          if ($LASTEXITCODE -ne 0) { throw "Correction patch failed" }
-          Write-Host "Final v6.0.8 corrections applied"
+          Write-Host "v6.0.9 source prepared"
           Get-Content version.txt
 
       - name: Set up Python 3.8 x64
@@ -70,7 +48,6 @@ jobs:
         with:
           python-version: '3.8'
           architecture: 'x64'
-          cache: 'pip'
 
       - name: Validate Python source
         run: python -m py_compile main.py updater.py face_engine.py download_models.py
