@@ -24,7 +24,7 @@ jobs:
           $zip = ".build\v609\source.zip"
           if (!(Test-Path $zip)) { throw "Missing source payload: $zip" }
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          if ($hash -ne "87f6f0a32e804ca778e027fdbb1427d181c148d22513247b730086e4f1401856") { throw "Payload SHA256 mismatch: $hash" }
+          if ($hash -ne "a670005c3fa552f9629635ead516cfa5e4bcd735fdb93b53beacd258ce8066e1") { throw "Payload SHA256 mismatch: $hash" }
           Expand-Archive -Path $zip -DestinationPath . -Force
           if (!(Test-Path "main.py")) { throw "main.py was not extracted" }
           Write-Host "v6.0.9 source prepared"
