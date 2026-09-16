@@ -40,37 +40,8 @@ jobs:
           if ($hash -ne "66c26e442e6505275b8965c1afa744afae515a542f27027fed8bee4eb5f1c805") { throw "Payload SHA256 mismatch: $hash" }
           Expand-Archive -Path $zip -DestinationPath . -Force
           if (!(Test-Path "main.py")) { throw "main.py was not extracted" }
-          Write-Host "v6.0.9 source prepared"
-          Get-Content version.txt
-
-      - name: Apply final viewer correction
-        shell: powershell
-        run: |
-          @'
-          from pathlib import Path
-          p=Path('main.py')
-          s=p.read_text(encoding='utf-8')
-          old='''        txt=(f"Архивный номер: {r['archive_no']}\nДата съёмки: {r['shot_date']}\nМесто съёмки: {r['location']}\n"
-                       f"Автор: {r['author']}\nИсточник поступления: {r['source']}\n\nОписание:\n{r['description']}")
-          '''
-          new='''        txt=(f"Описание:\n{r['description']}\n\n"
-                       f"Архивный номер: {r['archive_no']}\nДата съёмки: {r['shot_date']}\nМесто съёмки: {r['location']}\n"
-                       f"Автор: {r['author']}\nИсточник поступления: {r['source']}")
-          '''
-          if old in s:
-              s=s.replace(old,new,1)
-              print('Viewer order changed: description first')
-          elif 'txt=(f"Описание:' in s:
-              print('Viewer order already correct')
-          else:
-              raise SystemExit('Viewer detail block not found')
-          s=s.replace("APP_VERSION = '6.0.8'","APP_VERSION = '6.0.9'")
-          p.write_text(s,encoding='utf-8')
-          Path('version.txt').write_text('6.0.9\n',encoding='utf-8')
-          ip=Path('installer.iss')
-          it=ip.read_text(encoding='utf-8').replace('#define MyAppVersion "6.0.8"','#define MyAppVersion "6.0.9"')
-          ip.write_text(it,encoding='utf-8')
-          '@ | python -
+          if ((Get-Content version.txt -Raw).Trim() -ne "6.0.9") { throw "version.txt is not 6.0.9" }
+          Write-Host "Final v6.0.9 source prepared"
 
       - name: Set up Python 3.8 x64
         uses: actions/setup-python@v5
