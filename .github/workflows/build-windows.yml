@@ -21,14 +21,56 @@ jobs:
       - name: Prepare v6.0.9 source payload
         shell: powershell
         run: |
-          $zip = ".build\v609\source.zip"
-          if (!(Test-Path $zip)) { throw "Missing source payload: $zip" }
+          $partNames = @(
+            ".build\v609\payload_01.txt",
+            ".build\v609\payload_02.txt",
+            ".build\v609\payload_03.txt",
+            ".build\v609\payload_04.txt",
+            ".build\v609\payload_05.txt",
+            ".build\v609\payload_06.txt"
+          )
+          foreach ($p in $partNames) {
+            if (!(Test-Path $p)) { throw "Missing payload chunk: $p" }
+          }
+          $b64 = ($partNames | ForEach-Object { (Get-Content $_ -Raw).Trim() }) -join ""
+          $bytes = [Convert]::FromBase64String($b64)
+          $zip = Join-Path $env:RUNNER_TEMP "v609_source.zip"
+          [IO.File]::WriteAllBytes($zip, $bytes)
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          if ($hash -ne "a670005c3fa552f9629635ead516cfa5e4bcd735fdb93b53beacd258ce8066e1") { throw "Payload SHA256 mismatch: $hash" }
+          if ($hash -ne "cd6021010f0135a9cc4946a8363536fd121b0c516cc454238a62986d691a9dcc") { throw "Payload SHA256 mismatch: $hash" }
           Expand-Archive -Path $zip -DestinationPath . -Force
           if (!(Test-Path "main.py")) { throw "main.py was not extracted" }
           Write-Host "v6.0.9 source prepared"
           Get-Content version.txt
+
+      - name: Apply final viewer correction
+        shell: powershell
+        run: |
+          @'
+          from pathlib import Path
+          p=Path('main.py')
+          s=p.read_text(encoding='utf-8')
+          old='''        txt=(f"Архивный номер: {r['archive_no']}\nДата съёмки: {r['shot_date']}\nМесто съёмки: {r['location']}\n"
+                       f"Автор: {r['author']}\nИсточник поступления: {r['source']}\n\nОписание:\n{r['description']}")
+          '''
+          new='''        txt=(f"Описание:\n{r['description']}\n\n"
+                       f"Архивный номер: {r['archive_no']}\nДата съёмки: {r['shot_date']}\nМесто съёмки: {r['location']}\n"
+                       f"Автор: {r['author']}\nИсточник поступления: {r['source']}")
+          '''
+          if old in s:
+              s=s.replace(old,new,1)
+              print('Viewer order changed: description first')
+          elif 'txt=(f"Описание:' in s:
+              print('Viewer order already correct')
+          else:
+              raise SystemExit('Viewer detail block not found')
+          s=s.replace("APP_VERSION = '6.0.8'","APP_VERSION = '6.0.9'")
+          p.write_text(s,encoding='utf-8')
+          Path('version.txt').write_text('6.0.9\n',encoding='utf-8')
+          ip=Path('installer.iss')
+          it=ip.read_text(encoding='utf-8').replace('#define MyAppVersion "6.0.8"','#define MyAppVersion "6.0.9"')
+          ip.write_text(it,encoding='utf-8')
+          '@ | python -
 
       - name: Set up Python 3.8 x64
         uses: actions/setup-python@v5
