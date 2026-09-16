@@ -17,13 +17,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Prepare v6.0.9 source payload
         shell: powershell
         run: |
-          $baseCommit = "182d192e0fe22117c06f8f6c979f3b9a21c20d62"
           $partNames = @(
             ".build\v609\payload_01.txt",
             ".build\v609\payload_02.txt",
@@ -32,22 +29,18 @@ jobs:
             ".build\v609\payload_05.txt",
             ".build\v609\payload_06.txt"
           )
-          $parts = @()
           foreach ($p in $partNames) {
-            $gitPath = $p -replace '\\','/'
-            $text = (git show "${baseCommit}:$gitPath") -join "`n"
-            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($text)) { throw "Could not read payload chunk from $baseCommit : $p" }
-            $parts += $text.Trim()
+            if (!(Test-Path $p)) { throw "Missing payload chunk: $p" }
           }
-          $b64 = $parts -join ""
+          $b64 = ($partNames | ForEach-Object { (Get-Content $_ -Raw).Trim() }) -join ""
           $bytes = [Convert]::FromBase64String($b64)
           $zip = Join-Path $env:RUNNER_TEMP "v609_source.zip"
           [IO.File]::WriteAllBytes($zip, $bytes)
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          if ($hash -ne "59557f2cc22fd83d89bc8bc56a7f8c2dfdf1299cd9f6c894e98e89d7cfcd4936") { throw "Payload SHA256 mismatch: $hash" }
+          if ($hash -ne "66c26e442e6505275b8965c1afa744afae515a542f27027fed8bee4eb5f1c805") { throw "Payload SHA256 mismatch: $hash" }
           Expand-Archive -Path $zip -DestinationPath . -Force
           if (!(Test-Path "main.py")) { throw "main.py was not extracted" }
-          Write-Host "v6.0.9 source prepared from known-good payload"
+          Write-Host "v6.0.9 source prepared"
           Get-Content version.txt
 
       - name: Apply final viewer correction
