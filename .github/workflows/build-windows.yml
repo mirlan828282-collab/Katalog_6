@@ -21,23 +21,10 @@ jobs:
       - name: Prepare v6.0.9 source payload
         shell: powershell
         run: |
-          $partNames = @(
-            ".build\v609\payload_01.txt",
-            ".build\v609\payload_02.txt",
-            ".build\v609\payload_03.txt",
-            ".build\v609\payload_04.txt",
-            ".build\v609\payload_05.txt",
-            ".build\v609\payload_06.txt"
-          )
-          foreach ($p in $partNames) {
-            if (!(Test-Path $p)) { throw "Missing payload chunk: $p" }
-          }
-          $b64 = ($partNames | ForEach-Object { (Get-Content $_ -Raw).Trim() }) -join ""
-          $bytes = [Convert]::FromBase64String($b64)
-          $zip = Join-Path $env:RUNNER_TEMP "v609_source.zip"
-          [IO.File]::WriteAllBytes($zip, $bytes)
+          $zip = ".build\v609\source.zip"
+          if (!(Test-Path $zip)) { throw "Missing source payload: $zip" }
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          if ($hash -ne "59557f2cc22fd83d89bc8bc56a7f8c2dfdf1299cd9f6c894e98e89d7cfcd4936") { throw "Payload SHA256 mismatch: $hash" }
+          if ($hash -ne "87f6f0a32e804ca778e027fdbb1427d181c148d22513247b730086e4f1401856") { throw "Payload SHA256 mismatch: $hash" }
           Expand-Archive -Path $zip -DestinationPath . -Force
           if (!(Test-Path "main.py")) { throw "main.py was not extracted" }
           Write-Host "v6.0.9 source prepared"
