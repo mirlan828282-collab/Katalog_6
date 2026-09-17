@@ -1,0 +1,36 @@
+name: Extract Kartoteka v1.0.1 Source
+
+on:
+  push:
+    branches:
+      - kartoteka-v1.1.0-clean
+    paths:
+      - '.github/workflows/extract-kartoteka-v101-source.yml'
+  workflow_dispatch:
+
+jobs:
+  extract:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct verified v1.0.1 source
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem "Kartoteka_v101_source_parts\part*.txt" | Sort-Object Name
+          if ($parts.Count -ne 6) { throw "Expected 6 v1.0.1 source parts, found $($parts.Count)" }
+          $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ""
+          $zip = Join-Path $PWD "Kartoteka_v101_source.zip"
+          [IO.File]::WriteAllBytes($zip, [Convert]::FromBase64String($b64))
+          Expand-Archive -Path $zip -DestinationPath "$PWD\reconstructed" -Force
+          if (-not (Test-Path "$PWD\reconstructed\Kartoteka\client.py")) { throw "client.py missing" }
+          python -m py_compile "$PWD\reconstructed\Kartoteka\client.py" "$PWD\reconstructed\Kartoteka\server.py"
+          Compress-Archive -Path "$PWD\reconstructed\Kartoteka" -DestinationPath "$PWD\Kartoteka_v101_reconstructed.zip" -Force
+
+      - name: Upload reconstructed source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kartoteka_v101_reconstructed_source
+          path: Kartoteka_v101_reconstructed.zip
+          retention-days: 7
