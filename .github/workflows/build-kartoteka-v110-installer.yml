@@ -35,6 +35,52 @@ jobs:
           if (-not (Test-Path "Kartoteka\bulk_centrasia.py")) { throw "Bulk CentrAsia module missing" }
           if (-not (Test-Path "Kartoteka\uninstall.cmd")) { throw "Uninstall helper missing" }
 
+      - name: Add dedicated uninstall EXE launcher
+        shell: pwsh
+        run: |
+          @'
+          # -*- coding: utf-8 -*-
+          from __future__ import unicode_literals
+          import ctypes
+          import glob
+          import os
+          import subprocess
+          import sys
+
+          def message(text):
+              try:
+                  ctypes.windll.user32.MessageBoxW(None, text, "Kartoteka", 0x40)
+              except Exception:
+                  pass
+
+          def main():
+              app_dir = os.path.dirname(os.path.abspath(sys.executable))
+              candidates = sorted(glob.glob(os.path.join(app_dir, "unins*.exe")))
+              candidates = [p for p in candidates if os.path.basename(p).lower() != "uninstall.exe"]
+              if not candidates:
+                  message("Windows uninstaller was not found. Use Programs and Features.")
+                  return 1
+              try:
+                  subprocess.Popen([candidates[0]])
+                  return 0
+              except Exception as exc:
+                  message("Cannot start uninstaller: %s" % exc)
+                  return 2
+
+          if __name__ == "__main__":
+              sys.exit(main())
+          '@ | Set-Content -Path "Kartoteka\uninstall_launcher.py" -Encoding utf8
+
+          $issPath = "Kartoteka\installer\Kartoteka.iss"
+          $iss = Get-Content $issPath -Raw
+          $oldFile = 'Source: "..\uninstall.cmd"; DestDir: "{app}"; Flags: ignoreversion'
+          $newFile = $oldFile + "`r`n" + 'Source: "..\dist\uninstall\uninstall.exe"; DestDir: "{app}"; Flags: ignoreversion'
+          if ($iss -notmatch 'dist\\uninstall\\uninstall\.exe') {
+            $iss = $iss.Replace($oldFile, $newFile)
+          }
+          $iss = $iss.Replace('Name: "{group}\Uninstall"; Filename: "{app}\uninstall.cmd"; WorkingDir: "{app}"', 'Name: "{group}\Uninstall"; Filename: "{app}\uninstall.exe"; WorkingDir: "{app}"')
+          Set-Content -Path $issPath -Value $iss -Encoding utf8
+
       - name: Set up Windows 7 compatible Python
         uses: actions/setup-python@v5
         with:
@@ -50,7 +96,7 @@ jobs:
       - name: Compile sources
         shell: pwsh
         run: |
-          python -m py_compile Kartoteka\client.py Kartoteka\server.py Kartoteka\bulk_centrasia.py Kartoteka\centrasia_tools.py Kartoteka\self_test.py Kartoteka\test_centrasia_parser.py
+          python -m py_compile Kartoteka\client.py Kartoteka\server.py Kartoteka\bulk_centrasia.py Kartoteka\centrasia_tools.py Kartoteka\self_test.py Kartoteka\test_centrasia_parser.py Kartoteka\uninstall_launcher.py
 
       - name: Test CentrAsia parser
         shell: pwsh
@@ -88,6 +134,13 @@ jobs:
         run: |
           Set-Location Kartoteka
           pyinstaller --noconfirm --clean --console --onedir --name KartotekaServer server.py
+
+      - name: Build uninstall EXE
+        shell: pwsh
+        run: |
+          Set-Location Kartoteka
+          pyinstaller --noconfirm --clean --windowed --onefile --name uninstall uninstall_launcher.py
+          if (-not (Test-Path "dist\uninstall\uninstall.exe")) { throw "uninstall.exe was not built" }
 
       - name: Verify Windows 7 build runtime
         shell: pwsh
@@ -144,14 +197,15 @@ jobs:
           Set-Location Kartoteka\installer
           & "${{ steps.inno.outputs.iscc }}" "Kartoteka.iss"
 
-      - name: Verify installer and uninstaller configuration
+      - name: Verify installer and uninstall.exe
         shell: pwsh
         run: |
           $file = Get-Item "Kartoteka\installer\output\Kartoteka_Setup_v1.1.0_Win7-11_x64.exe"
           if ($file.Length -lt 10000000) { throw "Installer unexpectedly small: $($file.Length) bytes" }
+          if (-not (Test-Path "Kartoteka\dist\uninstall\uninstall.exe")) { throw "Dedicated uninstall.exe missing" }
           $iss = Get-Content "Kartoteka\installer\Kartoteka.iss" -Raw
           if ($iss -notmatch 'Uninstallable=yes') { throw "Inno uninstaller is not enabled" }
-          if ($iss -notmatch 'uninstall\.cmd') { throw "Uninstall helper is not included" }
+          if ($iss -notmatch 'dist\\uninstall\\uninstall\.exe') { throw "uninstall.exe is not included in installer" }
           $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
           Write-Host "Installer size: $([math]::Round($file.Length / 1MB, 2)) MB"
           Write-Host "Installer SHA256: $hash"
@@ -163,6 +217,7 @@ jobs:
           name: Kartoteka_Setup_v1.1.0_Win7-11_x64
           path: |
             Kartoteka/installer/output/Kartoteka_Setup_v1.1.0_Win7-11_x64.exe
+            Kartoteka/dist/uninstall/uninstall.exe
             Kartoteka/installer/output/SHA256.txt
           if-no-files-found: error
           retention-days: 30
