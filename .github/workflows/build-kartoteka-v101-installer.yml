@@ -23,14 +23,15 @@ jobs:
         run: |
           $parts = Get-ChildItem "Kartoteka_v101_source_parts\part*.txt" | Sort-Object Name
           if ($parts.Count -ne 6) { throw "Expected 6 source parts, found $($parts.Count)" }
+          $all = New-Object System.Collections.Generic.List[byte]
           foreach ($p in $parts) {
             $s = (Get-Content $p.FullName -Raw).Trim()
-            $m = [regex]::Match($s, '[^A-Za-z0-9+/=]')
-            Write-Host "$($p.Name) length=$($s.Length) invalid=$($m.Success) index=$($m.Index) char=[$($m.Value)]"
+            $chunk = [Convert]::FromBase64String($s)
+            $all.AddRange($chunk)
+            Write-Host "$($p.Name): decoded $($chunk.Length) bytes"
           }
-          $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ""
           $zip = Join-Path $PWD "Kartoteka_source_v1_0_1_final.zip"
-          [IO.File]::WriteAllBytes($zip, [Convert]::FromBase64String($b64))
+          [IO.File]::WriteAllBytes($zip, $all.ToArray())
           $expected = "c0f184da540c401eb95868bf737d713060db9305da1b582ca5f5045388114942"
           $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           Write-Host "Source SHA256: $actual"
@@ -38,16 +39,16 @@ jobs:
           Expand-Archive -Path $zip -DestinationPath $PWD -Force
           if (-not (Test-Path "Kartoteka\client.py")) { throw "Kartoteka source was not extracted" }
 
-      - name: Set up Python 3.8
+      - name: Set up Windows 7 compatible Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.8.10'
+          python-version: '3.7.9'
           architecture: 'x64'
 
       - name: Install build dependencies
         shell: pwsh
         run: |
-          python -m pip install --upgrade "pip<25"
+          python -m pip install --upgrade "pip<24.1"
           python -m pip install Pillow==9.5.0 PyInstaller==5.13.2
 
       - name: Compile sources
@@ -71,6 +72,13 @@ jobs:
         run: |
           Set-Location Kartoteka
           pyinstaller --noconfirm --clean --console --onedir --name KartotekaServer server.py
+
+      - name: Check forbidden Windows 8+ path dependency
+        shell: pwsh
+        run: |
+          $hits = Get-ChildItem Kartoteka\dist -Recurse -File | Select-String -SimpleMatch "api-ms-win-core-path-l1-1-0.dll" -ErrorAction SilentlyContinue
+          if ($hits) { throw "Windows 8+ API dependency detected" }
+          Write-Host "No explicit api-ms-win-core-path-l1-1-0.dll dependency string detected"
 
       - name: Smoke-test server executable
         shell: pwsh
