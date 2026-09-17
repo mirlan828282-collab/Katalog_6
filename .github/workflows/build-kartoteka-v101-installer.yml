@@ -23,6 +23,11 @@ jobs:
         run: |
           $parts = Get-ChildItem "Kartoteka_v101_source_parts\part*.txt" | Sort-Object Name
           if ($parts.Count -ne 6) { throw "Expected 6 source parts, found $($parts.Count)" }
+          foreach ($p in $parts) {
+            $s = (Get-Content $p.FullName -Raw).Trim()
+            $m = [regex]::Match($s, '[^A-Za-z0-9+/=]')
+            Write-Host "$($p.Name) length=$($s.Length) invalid=$($m.Success) index=$($m.Index) char=[$($m.Value)]"
+          }
           $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ""
           $zip = Join-Path $PWD "Kartoteka_source_v1_0_1_final.zip"
           [IO.File]::WriteAllBytes($zip, [Convert]::FromBase64String($b64))
