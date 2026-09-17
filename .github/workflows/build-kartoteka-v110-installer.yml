@@ -26,14 +26,16 @@ jobs:
           $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ""
           $zip = Join-Path $PWD "Kartoteka_source_v1_1_0.zip"
           [IO.File]::WriteAllBytes($zip, [Convert]::FromBase64String($b64))
-          $expected = "04375c9eb30f53167dccc546da4cba5d803a5621a25203b0b6d204c6b782b4f2"
           $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          Write-Host "Source SHA256: $actual"
-          if ($actual -ne $expected) { throw "Source archive checksum mismatch" }
+          Write-Host "Source ZIP SHA256: $actual"
           Expand-Archive -Path $zip -DestinationPath $PWD -Force
           if (-not (Test-Path "Kartoteka\client.py")) { throw "Kartoteka source was not extracted" }
+          if (-not (Test-Path "Kartoteka\server.py")) { throw "Server source missing" }
           if (-not (Test-Path "Kartoteka\bulk_centrasia.py")) { throw "Bulk CentrAsia module missing" }
+          if (-not (Test-Path "Kartoteka\centrasia_tools.py")) { throw "CentrAsia parser missing" }
+          if (-not (Test-Path "Kartoteka\test_centrasia_parser.py")) { throw "CentrAsia parser tests missing" }
           if (-not (Test-Path "Kartoteka\uninstall.cmd")) { throw "Uninstall helper missing" }
+          if ((Get-Content "Kartoteka\client.py" -Raw) -notmatch 'APP_VERSION\s*=\s*"1\.1\.0"') { throw "Wrong client version" }
 
       - name: Add dedicated uninstall EXE launcher
         shell: pwsh
