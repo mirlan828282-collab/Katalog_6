@@ -61,7 +61,22 @@ jobs:
       - name: Run source self-test
         shell: pwsh
         run: |
-          python Kartoteka\self_test.py
+          $server = Start-Process -FilePath "python" -ArgumentList "Kartoteka\server.py","--host","127.0.0.1","--port","8765" -PassThru -WindowStyle Hidden
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 20; $i++) {
+              Start-Sleep -Milliseconds 500
+              try {
+                $r = Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/health" -TimeoutSec 2
+                if ($r.ok -eq $true) { $ready = $true; break }
+              } catch {}
+            }
+            if (-not $ready) { throw "Source server did not start for self-test" }
+            python Kartoteka\self_test.py
+            if ($LASTEXITCODE -ne 0) { throw "Source self-test failed" }
+          } finally {
+            Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Build client EXE
         shell: pwsh
