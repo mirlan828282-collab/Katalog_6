@@ -28,14 +28,33 @@ jobs:
           [IO.File]::WriteAllBytes($zip, [Convert]::FromBase64String($b64))
           $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           Write-Host "Source ZIP SHA256: $actual"
-          Expand-Archive -Path $zip -DestinationPath $PWD -Force
-          if (-not (Test-Path "Kartoteka\client.py")) { throw "Kartoteka source was not extracted" }
+
+          # Important: extract into a clean directory. Expand-Archive can fail when
+          # the repository already contains a Kartoteka folder with different files.
+          $srcRoot = Join-Path $PWD "_kartoteka_extract"
+          if (Test-Path $srcRoot) { Remove-Item $srcRoot -Recurse -Force }
+          New-Item -ItemType Directory -Path $srcRoot | Out-Null
+          Expand-Archive -Path $zip -DestinationPath $srcRoot -Force
+
+          $sourceDir = Join-Path $srcRoot "Kartoteka"
+          if (-not (Test-Path (Join-Path $sourceDir "client.py"))) {
+            $client = Get-ChildItem $srcRoot -Recurse -Filter client.py | Select-Object -First 1
+            if (-not $client) { throw "client.py was not found after extracting source" }
+            $sourceDir = $client.Directory.FullName
+          }
+
+          $buildDir = Join-Path $PWD "Kartoteka"
+          if (Test-Path $buildDir) { Remove-Item $buildDir -Recurse -Force }
+          Copy-Item -Path $sourceDir -Destination $buildDir -Recurse -Force
+
+          if (-not (Test-Path "Kartoteka\client.py")) { throw "Kartoteka source was not copied" }
           if (-not (Test-Path "Kartoteka\server.py")) { throw "Server source missing" }
           if (-not (Test-Path "Kartoteka\bulk_centrasia.py")) { throw "Bulk CentrAsia module missing" }
           if (-not (Test-Path "Kartoteka\centrasia_tools.py")) { throw "CentrAsia parser missing" }
           if (-not (Test-Path "Kartoteka\test_centrasia_parser.py")) { throw "CentrAsia parser tests missing" }
           if (-not (Test-Path "Kartoteka\uninstall.cmd")) { throw "Uninstall helper missing" }
           if ((Get-Content "Kartoteka\client.py" -Raw) -notmatch 'APP_VERSION\s*=\s*"1\.1\.0"') { throw "Wrong client version" }
+          Write-Host "Source reconstruction passed"
 
       - name: Add dedicated uninstall EXE launcher
         shell: pwsh
@@ -76,8 +95,8 @@ jobs:
           $issPath = "Kartoteka\installer\Kartoteka.iss"
           $iss = Get-Content $issPath -Raw
           $oldFile = 'Source: "..\uninstall.cmd"; DestDir: "{app}"; Flags: ignoreversion'
-          $newFile = $oldFile + "`r`n" + 'Source: "..\dist\uninstall\uninstall.exe"; DestDir: "{app}"; Flags: ignoreversion'
-          if ($iss -notmatch 'dist\\uninstall\\uninstall\.exe') {
+          $newFile = $oldFile + "`r`n" + 'Source: "..\dist\uninstall.exe"; DestDir: "{app}"; Flags: ignoreversion'
+          if ($iss -notmatch 'dist\\uninstall\.exe') {
             $iss = $iss.Replace($oldFile, $newFile)
           }
           $iss = $iss.Replace('Name: "{group}\Uninstall"; Filename: "{app}\uninstall.cmd"; WorkingDir: "{app}"', 'Name: "{group}\Uninstall"; Filename: "{app}\uninstall.exe"; WorkingDir: "{app}"')
@@ -142,7 +161,7 @@ jobs:
         run: |
           Set-Location Kartoteka
           pyinstaller --noconfirm --clean --windowed --onefile --name uninstall uninstall_launcher.py
-          if (-not (Test-Path "dist\uninstall\uninstall.exe")) { throw "uninstall.exe was not built" }
+          if (-not (Test-Path "dist\uninstall.exe")) { throw "uninstall.exe was not built" }
 
       - name: Verify Windows 7 build runtime
         shell: pwsh
@@ -204,10 +223,10 @@ jobs:
         run: |
           $file = Get-Item "Kartoteka\installer\output\Kartoteka_Setup_v1.1.0_Win7-11_x64.exe"
           if ($file.Length -lt 10000000) { throw "Installer unexpectedly small: $($file.Length) bytes" }
-          if (-not (Test-Path "Kartoteka\dist\uninstall\uninstall.exe")) { throw "Dedicated uninstall.exe missing" }
+          if (-not (Test-Path "Kartoteka\dist\uninstall.exe")) { throw "Dedicated uninstall.exe missing" }
           $iss = Get-Content "Kartoteka\installer\Kartoteka.iss" -Raw
           if ($iss -notmatch 'Uninstallable=yes') { throw "Inno uninstaller is not enabled" }
-          if ($iss -notmatch 'dist\\uninstall\\uninstall\.exe') { throw "uninstall.exe is not included in installer" }
+          if ($iss -notmatch 'dist\\uninstall\.exe') { throw "uninstall.exe is not included in installer" }
           $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
           Write-Host "Installer size: $([math]::Round($file.Length / 1MB, 2)) MB"
           Write-Host "Installer SHA256: $hash"
@@ -219,7 +238,7 @@ jobs:
           name: Kartoteka_Setup_v1.1.0_Win7-11_x64
           path: |
             Kartoteka/installer/output/Kartoteka_Setup_v1.1.0_Win7-11_x64.exe
-            Kartoteka/dist/uninstall/uninstall.exe
+            Kartoteka/dist/uninstall.exe
             Kartoteka/installer/output/SHA256.txt
           if-no-files-found: error
           retention-days: 30
