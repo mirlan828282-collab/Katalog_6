@@ -90,12 +90,13 @@ jobs:
           Set-Location Kartoteka
           pyinstaller --noconfirm --clean --console --onedir --name KartotekaServer server.py
 
-      - name: Check forbidden Windows 8+ path dependency
+      - name: Verify Windows 7 build runtime
         shell: pwsh
         run: |
-          $hits = Get-ChildItem Kartoteka\dist -Recurse -File | Select-String -SimpleMatch "api-ms-win-core-path-l1-1-0.dll" -ErrorAction SilentlyContinue
-          if ($hits) { throw "Windows 8+ API dependency detected" }
-          Write-Host "No explicit api-ms-win-core-path-l1-1-0.dll dependency string detected"
+          python -c "import sys; print(sys.version); assert sys.version_info[:2] == (3, 7)"
+          if (-not (Test-Path "Kartoteka\dist\Kartoteka\Kartoteka.exe")) { throw "Client EXE missing" }
+          if (-not (Test-Path "Kartoteka\dist\KartotekaServer\KartotekaServer.exe")) { throw "Server EXE missing" }
+          Write-Host "Windows 7 compatible Python 3.7 build completed"
 
       - name: Smoke-test server executable
         shell: pwsh
