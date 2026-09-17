@@ -33,6 +33,15 @@ jobs:
           Expand-Archive -Path $zip -DestinationPath $PWD -Force
           if (-not (Test-Path "Kartoteka\client.py")) { throw "Kartoteka source was not extracted" }
 
+      - name: Fix installer firewall quoting
+        shell: pwsh
+        run: |
+          $path = "Kartoteka\installer\Kartoteka.iss"
+          $text = Get-Content $path -Raw
+          $text = $text.Replace('name=\"Kartoteka Server 8765\"', 'name=""Kartoteka Server 8765""')
+          Set-Content -Path $path -Value $text -Encoding utf8
+          if ((Get-Content $path -Raw) -notmatch 'name=""Kartoteka Server 8765""') { throw "Installer quote patch failed" }
+
       - name: Set up Python 3.8
         uses: actions/setup-python@v5
         with:
