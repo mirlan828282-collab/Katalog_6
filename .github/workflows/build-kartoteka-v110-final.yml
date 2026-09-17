@@ -1,0 +1,216 @@
+name: Build Kartoteka v1.1.0 Final
+
+on:
+  push:
+    branches:
+      - kartoteka-v1.1.0-final
+    paths:
+      - '.github/workflows/build-kartoteka-v110-final.yml'
+      - 'Kartoteka_v110_source_parts/**'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct source safely
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem "Kartoteka_v110_source_parts\part*.txt" | Sort-Object Name
+          if ($parts.Count -lt 1) { throw "No source parts found" }
+          Write-Host "Source parts found: $($parts.Count)"
+          $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ""
+          $zip = Join-Path $PWD "Kartoteka_source_v1_1_0.zip"
+          [IO.File]::WriteAllBytes($zip, [Convert]::FromBase64String($b64))
+          Write-Host "Source ZIP SHA256: $((Get-FileHash $zip -Algorithm SHA256).Hash.ToLower())"
+
+          $extractRoot = Join-Path $PWD "_kartoteka_extract"
+          if (Test-Path $extractRoot) { Remove-Item $extractRoot -Recurse -Force }
+          New-Item -ItemType Directory -Path $extractRoot | Out-Null
+          Expand-Archive -Path $zip -DestinationPath $extractRoot -Force
+
+          $client = Get-ChildItem $extractRoot -Recurse -Filter client.py | Select-Object -First 1
+          if (-not $client) { throw "client.py not found in reconstructed source" }
+          $sourceDir = $client.Directory.FullName
+          $buildDir = Join-Path $PWD "Kartoteka"
+          if (Test-Path $buildDir) { Remove-Item $buildDir -Recurse -Force }
+          Copy-Item -Path $sourceDir -Destination $buildDir -Recurse -Force
+
+          $required = @("client.py","server.py","bulk_centrasia.py","centrasia_tools.py","self_test.py","test_centrasia_parser.py","installer\Kartoteka.iss")
+          foreach ($f in $required) {
+            if (-not (Test-Path (Join-Path $buildDir $f))) { throw "Missing required source: $f" }
+          }
+          if ((Get-Content "$buildDir\client.py" -Raw) -notmatch 'APP_VERSION\s*=\s*"1\.1\.0"') { throw "Wrong client version" }
+          Write-Host "Source reconstruction passed"
+
+      - name: Add uninstall.exe launcher and installer entry
+        shell: pwsh
+        run: |
+          @'
+          # -*- coding: utf-8 -*-
+          from __future__ import unicode_literals
+          import ctypes, glob, os, subprocess, sys
+          def msg(text):
+              try:
+                  ctypes.windll.user32.MessageBoxW(None, text, "Kartoteka", 0x40)
+              except Exception:
+                  pass
+          def main():
+              app_dir = os.path.dirname(os.path.abspath(sys.executable))
+              candidates = [p for p in sorted(glob.glob(os.path.join(app_dir, "unins*.exe"))) if os.path.basename(p).lower() != "uninstall.exe"]
+              if not candidates:
+                  msg("Windows uninstaller was not found. Use Programs and Features.")
+                  return 1
+              try:
+                  subprocess.Popen([candidates[0]])
+                  return 0
+              except Exception as exc:
+                  msg("Cannot start uninstaller: %s" % exc)
+                  return 2
+          if __name__ == "__main__":
+              sys.exit(main())
+          '@ | Set-Content -Path "Kartoteka\uninstall_launcher.py" -Encoding utf8
+
+          $issPath = "Kartoteka\installer\Kartoteka.iss"
+          $iss = Get-Content $issPath -Raw
+          $anchor = 'Source: "..\uninstall.cmd"; DestDir: "{app}"; Flags: ignoreversion'
+          if ($iss -notmatch 'dist\\uninstall\.exe') {
+            $iss = $iss.Replace($anchor, $anchor + "`r`n" + 'Source: "..\dist\uninstall.exe"; DestDir: "{app}"; Flags: ignoreversion')
+          }
+          $iss = $iss.Replace('Name: "{group}\Uninstall"; Filename: "{app}\uninstall.cmd"; WorkingDir: "{app}"', 'Name: "{group}\Uninstall"; Filename: "{app}\uninstall.exe"; WorkingDir: "{app}"')
+          Set-Content -Path $issPath -Value $iss -Encoding utf8
+
+      - name: Set up Windows 7 compatible Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.7.9'
+          architecture: 'x64'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade "pip<24.1"
+          python -m pip install Pillow==9.5.0 openpyxl==3.0.10 PyInstaller==5.13.2
+
+      - name: Compile and test sources
+        shell: pwsh
+        run: |
+          python -m py_compile Kartoteka\client.py Kartoteka\server.py Kartoteka\bulk_centrasia.py Kartoteka\centrasia_tools.py Kartoteka\self_test.py Kartoteka\test_centrasia_parser.py Kartoteka\uninstall_launcher.py
+          python Kartoteka\test_centrasia_parser.py
+          if ($LASTEXITCODE -ne 0) { throw "CentrAsia parser tests failed" }
+
+      - name: Run database self-test
+        shell: pwsh
+        run: |
+          $server = Start-Process -FilePath "python" -ArgumentList "Kartoteka\server.py","--host","127.0.0.1","--port","8765" -PassThru -WindowStyle Hidden
+          try {
+            $ready = $false
+            for ($i=0; $i -lt 20; $i++) {
+              Start-Sleep -Milliseconds 500
+              try {
+                $r = Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/health" -TimeoutSec 2
+                if ($r.ok -eq $true -and $r.version -eq "1.1.0") { $ready = $true; break }
+              } catch {}
+            }
+            if (-not $ready) { throw "Source server did not start" }
+            python Kartoteka\self_test.py
+            if ($LASTEXITCODE -ne 0) { throw "Database self-test failed" }
+          } finally {
+            Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Build client EXE
+        shell: pwsh
+        run: |
+          Set-Location Kartoteka
+          pyinstaller --noconfirm --clean --windowed --onedir --name Kartoteka --collect-all openpyxl client.py
+
+      - name: Build server EXE
+        shell: pwsh
+        run: |
+          Set-Location Kartoteka
+          pyinstaller --noconfirm --clean --console --onedir --name KartotekaServer server.py
+
+      - name: Build uninstall EXE
+        shell: pwsh
+        run: |
+          Set-Location Kartoteka
+          pyinstaller --noconfirm --clean --windowed --onefile --name uninstall uninstall_launcher.py
+          if (-not (Test-Path "dist\uninstall.exe")) { throw "uninstall.exe was not built" }
+
+      - name: Verify Windows 7 runtime
+        shell: pwsh
+        run: |
+          $py = Get-ChildItem Kartoteka\dist -Recurse -Filter python37.dll
+          if (-not $py) { throw "python37.dll not found" }
+          Write-Host "Python 3.7 runtime bundled"
+
+      - name: Smoke-test packaged server
+        shell: pwsh
+        run: |
+          $server = "$PWD\Kartoteka\dist\KartotekaServer\KartotekaServer.exe"
+          $p = Start-Process -FilePath $server -ArgumentList "--host","127.0.0.1","--port","8765" -PassThru -WindowStyle Hidden
+          try {
+            $ok = $false
+            for ($i=0; $i -lt 20; $i++) {
+              Start-Sleep -Milliseconds 500
+              try {
+                $r = Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/health" -TimeoutSec 2
+                if ($r.ok -eq $true -and $r.version -eq "1.1.0") { $ok = $true; break }
+              } catch {}
+            }
+            if (-not $ok) { throw "Packaged server smoke test failed" }
+          } finally {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Download VC++ runtime
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://aka.ms/vs/16/release/vc_redist.x64.exe" -OutFile "Kartoteka\installer\VC_redist.x64.exe"
+          if ((Get-Item "Kartoteka\installer\VC_redist.x64.exe").Length -lt 1000000) { throw "VC++ runtime download failed" }
+
+      - name: Find Inno Setup
+        id: inno
+        shell: pwsh
+        run: |
+          $paths = @("C:\Program Files (x86)\Inno Setup 6\ISCC.exe", "C:\Program Files\Inno Setup 6\ISCC.exe")
+          $iscc = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            $iscc = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { throw "ISCC.exe not found" }
+          "iscc=$iscc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          Set-Location Kartoteka\installer
+          & "${{ steps.inno.outputs.iscc }}" "Kartoteka.iss"
+
+      - name: Verify final installer
+        shell: pwsh
+        run: |
+          $setup = Get-Item "Kartoteka\installer\output\Kartoteka_Setup_v1.1.0_Win7-11_x64.exe"
+          if ($setup.Length -lt 10000000) { throw "Installer unexpectedly small" }
+          if (-not (Test-Path "Kartoteka\dist\uninstall.exe")) { throw "uninstall.exe missing" }
+          $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Installer size: $([math]::Round($setup.Length / 1MB, 2)) MB"
+          Write-Host "Installer SHA256: $hash"
+          $hash | Out-File "Kartoteka\installer\output\SHA256.txt" -Encoding ascii
+
+      - name: Upload final installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kartoteka_Setup_v1.1.0_Win7-11_x64
+          path: |
+            Kartoteka/installer/output/Kartoteka_Setup_v1.1.0_Win7-11_x64.exe
+            Kartoteka/dist/uninstall.exe
+            Kartoteka/installer/output/SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
