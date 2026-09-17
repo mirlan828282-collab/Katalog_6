@@ -26,6 +26,8 @@ jobs:
           $all = New-Object System.Collections.Generic.List[byte]
           foreach ($p in $parts) {
             $s = (Get-Content $p.FullName -Raw).Trim()
+            $pad = (4 - ($s.Length % 4)) % 4
+            if ($pad -gt 0) { $s = $s + ('=' * $pad) }
             $chunk = [Convert]::FromBase64String($s)
             $all.AddRange($chunk)
             Write-Host "$($p.Name): decoded $($chunk.Length) bytes"
