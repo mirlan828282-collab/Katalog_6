@@ -1,0 +1,136 @@
+name: Build Kartoteka v1.0.1 Installer
+
+on:
+  push:
+    branches:
+      - kartoteka-v1.0.1-build
+    paths:
+      - 'Kartoteka_v101_source_parts/**'
+      - '.github/workflows/build-kartoteka-v101-installer.yml'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct and verify source
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem "Kartoteka_v101_source_parts\part*.txt" | Sort-Object Name
+          if ($parts.Count -ne 6) { throw "Expected 6 source parts, found $($parts.Count)" }
+          $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ""
+          $zip = Join-Path $PWD "Kartoteka_source_v1_0_1_final.zip"
+          [IO.File]::WriteAllBytes($zip, [Convert]::FromBase64String($b64))
+          $expected = "c0f184da540c401eb95868bf737d713060db9305da1b582ca5f5045388114942"
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Source SHA256: $actual"
+          if ($actual -ne $expected) { throw "Source archive checksum mismatch" }
+          Expand-Archive -Path $zip -DestinationPath $PWD -Force
+          if (-not (Test-Path "Kartoteka\client.py")) { throw "Kartoteka source was not extracted" }
+
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.8.10'
+          architecture: 'x64'
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade "pip<25"
+          python -m pip install Pillow==9.5.0 PyInstaller==5.13.2
+
+      - name: Compile sources
+        shell: pwsh
+        run: |
+          python -m py_compile Kartoteka\client.py Kartoteka\server.py Kartoteka\self_test.py
+
+      - name: Run source self-test
+        shell: pwsh
+        run: |
+          python Kartoteka\self_test.py
+
+      - name: Build client EXE
+        shell: pwsh
+        run: |
+          Set-Location Kartoteka
+          pyinstaller --noconfirm --clean --windowed --onedir --name Kartoteka client.py
+
+      - name: Build server EXE
+        shell: pwsh
+        run: |
+          Set-Location Kartoteka
+          pyinstaller --noconfirm --clean --console --onedir --name KartotekaServer server.py
+
+      - name: Smoke-test server executable
+        shell: pwsh
+        run: |
+          $server = "$PWD\Kartoteka\dist\KartotekaServer\KartotekaServer.exe"
+          $p = Start-Process -FilePath $server -ArgumentList "--host","127.0.0.1","--port","8765" -PassThru -WindowStyle Hidden
+          try {
+            $ok = $false
+            for ($i = 0; $i -lt 20; $i++) {
+              Start-Sleep -Milliseconds 500
+              try {
+                $r = Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/health" -TimeoutSec 2
+                if ($r.ok -eq $true -and $r.version -eq "1.0.1") { $ok = $true; break }
+              } catch {}
+            }
+            if (-not $ok) { throw "KartotekaServer smoke test failed" }
+            Write-Host "KartotekaServer v1.0.1 smoke test passed"
+          } finally {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Download VC++ runtime
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://aka.ms/vs/16/release/vc_redist.x64.exe" -OutFile "Kartoteka\installer\VC_redist.x64.exe"
+          if ((Get-Item "Kartoteka\installer\VC_redist.x64.exe").Length -lt 1000000) { throw "VC++ runtime download failed" }
+
+      - name: Locate Inno Setup compiler
+        id: inno
+        shell: pwsh
+        run: |
+          $paths = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            $iscc = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { throw "ISCC.exe not found" }
+          "iscc=$iscc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          Set-Location Kartoteka\installer
+          & "${{ steps.inno.outputs.iscc }}" "Kartoteka.iss"
+
+      - name: Verify installer
+        shell: pwsh
+        run: |
+          $file = Get-Item "Kartoteka\installer\output\Kartoteka_Setup_v1.0.1_Win7-11_x64.exe"
+          if ($file.Length -lt 10000000) { throw "Installer unexpectedly small: $($file.Length) bytes" }
+          $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Installer size: $([math]::Round($file.Length / 1MB, 2)) MB"
+          Write-Host "Installer SHA256: $hash"
+          $hash | Out-File "Kartoteka\installer\output\SHA256.txt" -Encoding ascii
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kartoteka_Setup_v1.0.1_Win7-11_x64
+          path: |
+            Kartoteka/installer/output/Kartoteka_Setup_v1.0.1_Win7-11_x64.exe
+            Kartoteka/installer/output/SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
