@@ -1,0 +1,26 @@
+name: Inspect Kartoteka employment
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ kartoteka-local-v1.2.1 ]
+    paths: [ '.github/workflows/inspect-kartoteka-employment.yml' ]
+
+jobs:
+  inspect:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source
+        shell: powershell
+        run: |
+          $parts = Get-ChildItem 'kartoteka_v1_2_source/part*.txt' | Sort-Object Name
+          $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          [IO.File]::WriteAllBytes('src.zip', [Convert]::FromBase64String($b64))
+          Expand-Archive 'src.zip' -DestinationPath '.' -Force
+      - name: Show employment references
+        shell: powershell
+        run: |
+          Get-ChildItem 'Kartoteka_Local_v1.2.0' -Recurse -Filter *.py |
+            Select-String -Pattern 'employment|created_at' -Context 3,5 |
+            ForEach-Object { $_.ToString() }
