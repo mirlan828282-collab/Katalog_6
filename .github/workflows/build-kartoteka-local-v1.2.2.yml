@@ -1,0 +1,296 @@
+name: Build Kartoteka Local 1.2.2
+
+on:
+  push:
+    branches: [ kartoteka-local-v1.2.2 ]
+    paths:
+      - 'kartoteka_v121_patch/**'
+      - '.github/workflows/build-kartoteka-local-v1.2.2.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct v1.2 source
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $parts = Get-ChildItem 'kartoteka_v1_2_source/part*.txt' | Sort-Object Name
+          if ($parts.Count -ne 9) { throw "Expected 9 source parts, found $($parts.Count)" }
+          $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          [IO.File]::WriteAllBytes('Kartoteka_Local_v1.2.0_source.zip', [Convert]::FromBase64String($b64))
+          $hash = (Get-FileHash 'Kartoteka_Local_v1.2.0_source.zip' -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne '81895af15522628ae1e6bc95f3bb271e22a4a3a54889a4d2f2565c5722bda1c1') { throw "Source checksum mismatch: $hash" }
+          Expand-Archive 'Kartoteka_Local_v1.2.0_source.zip' -DestinationPath '.' -Force
+          Rename-Item 'Kartoteka_Local_v1.2.0' 'Kartoteka_Local_v1.2.2'
+          if (!(Test-Path 'Kartoteka_Local_v1.2.2/main.py')) { throw 'main.py missing' }
+
+      - name: Replace CentrAsia engine
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $parts = Get-ChildItem 'kartoteka_v121_patch/centrasia_part*.txt' | Sort-Object Name
+          if ($parts.Count -ne 7) { throw "Expected 7 CentrAsia patch parts, found $($parts.Count)" }
+          $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          $bytes = [Convert]::FromBase64String($b64)
+          [IO.File]::WriteAllBytes('Kartoteka_Local_v1.2.2/kartoteka/centrasia.py', $bytes)
+          $hash = (Get-FileHash 'Kartoteka_Local_v1.2.2/kartoteka/centrasia.py' -Algorithm SHA256).Hash.ToLower()
+          Write-Host "CentrAsia engine SHA256: $hash"
+
+      - name: Setup Python 3.7.9 x64
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.7.9'
+          architecture: 'x64'
+
+      - name: Apply v1.2.2 compatibility and database patches
+        shell: powershell
+        run: |
+          @'
+          from pathlib import Path
+
+          root = Path("Kartoteka_Local_v1.2.2")
+
+          p = root / "kartoteka" / "services.py"
+          s = p.read_text(encoding="utf-8")
+          if "wb.close()" not in s:
+              needle = "    raw = [tuple(r) for r in ws.iter_rows(values_only=True)]"
+              if needle not in s:
+                  raise RuntimeError("Excel patch target not found")
+              s = s.replace(needle, needle + "\n    wb.close()", 1)
+              p.write_text(s, encoding="utf-8")
+
+          p = root / "kartoteka" / "app.py"
+          s = p.read_text(encoding="utf-8")
+          if "def fail():" not in s:
+              raise RuntimeError("CentrAsia error callback patch target not found")
+          s = s.replace("def fail():", "def fail(message=str(e) or repr(e)):", 1)
+          s = s.replace('messagebox.showerror("CentrAsia", str(e))', 'messagebox.showerror("CentrAsia", message)', 1)
+          s = s.replace(
+              'webbrowser.open("https://centrasia.org/search.php?st=" + query.replace(" ", "+"))',
+              'webbrowser.open("https://www.google.com/search?q=site%3Acentrasia.org%2Fperson2.php+" + query.replace(" ", "+"))'
+          )
+          p.write_text(s, encoding="utf-8")
+
+          # Compatibility with existing Kartoteka databases:
+          # older employment tables require created_at/updated_at timestamps.
+          p = root / "kartoteka" / "database.py"
+          s = p.read_text(encoding="utf-8")
+          start = s.index("CREATE TABLE IF NOT EXISTS employment (")
+          end = s.index("CREATE INDEX IF NOT EXISTS idx_employment_person", start)
+          block = s[start:end]
+          if "created_at TEXT" not in block:
+              block = block.replace(
+                  "    source_url TEXT,\n",
+                  "    source_url TEXT,\n    created_at TEXT NOT NULL,\n    updated_at TEXT NOT NULL,\n",
+                  1,
+              )
+              s = s[:start] + block + s[end:]
+
+          mig_marker = '        now = self.now()\n        if "created_at" in self._columns("persons"):'
+          if mig_marker not in s:
+              raise RuntimeError("database migration marker not found")
+          s = s.replace(
+              mig_marker,
+              '        emp_cols = self._columns("employment")\n'
+              '        if "created_at" not in emp_cols:\n'
+              '            self.conn.execute("ALTER TABLE employment ADD COLUMN created_at TEXT")\n'
+              '        if "updated_at" not in emp_cols:\n'
+              '            self.conn.execute("ALTER TABLE employment ADD COLUMN updated_at TEXT")\n'
+              '        now = self.now()\n'
+              '        if "created_at" in self._columns("persons"):',
+              1,
+          )
+          commit_marker = (
+              '        if "updated_at" in self._columns("persons"):\n'
+              '            self.conn.execute("UPDATE persons SET updated_at=? WHERE updated_at IS NULL OR updated_at=\'\'", (now,))\n'
+              '        self.conn.commit()'
+          )
+          if commit_marker not in s:
+              raise RuntimeError("database timestamp backfill marker not found")
+          s = s.replace(
+              commit_marker,
+              '        if "updated_at" in self._columns("persons"):\n'
+              '            self.conn.execute("UPDATE persons SET updated_at=? WHERE updated_at IS NULL OR updated_at=\'\'", (now,))\n'
+              '        if "created_at" in self._columns("employment"):\n'
+              '            self.conn.execute("UPDATE employment SET created_at=? WHERE created_at IS NULL OR created_at=\'\'", (now,))\n'
+              '        if "updated_at" in self._columns("employment"):\n'
+              '            self.conn.execute("UPDATE employment SET updated_at=? WHERE updated_at IS NULL OR updated_at=\'\'", (now,))\n'
+              '        self.conn.commit()',
+              1,
+          )
+          p.write_text(s, encoding="utf-8")
+
+          p = root / "kartoteka" / "repository.py"
+          s = p.read_text(encoding="utf-8")
+
+          a = s.index("    def add_employment")
+          b = s.index("    def replace_centrasia_employment", a)
+          block = s[a:b]
+          if "created_at,updated_at" not in block:
+              block = block.replace(
+                  "        with self.db.thread_lock:\n",
+                  "        with self.db.thread_lock:\n            ts = self.db.now()\n",
+                  1,
+              )
+              block = block.replace(
+                  "source_kind,source_url)\n                VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                  "source_kind,source_url,created_at,updated_at)\n                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  1,
+              )
+              block = block.replace(
+                  'data.get("note"), data.get("source_kind"), data.get("source_url")',
+                  'data.get("note"), data.get("source_kind"), data.get("source_url"), ts, ts',
+                  1,
+              )
+          s = s[:a] + block + s[b:]
+
+          a = s.index("    def replace_centrasia_employment")
+          b = s.index("    def delete_employment", a)
+          block = s[a:b]
+          if "created_at,updated_at" not in block:
+              block = block.replace(
+                  "        with self.db.thread_lock:\n",
+                  "        with self.db.thread_lock:\n            ts = self.db.now()\n",
+                  1,
+              )
+              block = block.replace(
+                  "source_kind,source_url)\n                    VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                  "source_kind,source_url,created_at,updated_at)\n                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  1,
+              )
+              block = block.replace(
+                  '"centrasia", source_url\n                ))',
+                  '"centrasia", source_url, ts, ts\n                ))',
+                  1,
+              )
+          s = s[:a] + block + s[b:]
+          p.write_text(s, encoding="utf-8")
+
+          # Keep creator metadata consistent with the requested name.
+          for rel in ["kartoteka/app.py", "kartoteka/__init__.py", "README.md", "installer/Kartoteka.iss"]:
+              p = root / rel
+              enc = "utf-8-sig" if rel.endswith(".iss") else "utf-8"
+              t = p.read_text(encoding=enc).replace("Mirlan", "Esenbekov M.")
+              p.write_text(t, encoding=enc)
+
+          for rel in ["kartoteka/__init__.py", "README.md", "installer/Kartoteka.iss"]:
+              p = root / rel
+              enc = "utf-8-sig" if rel.endswith(".iss") else "utf-8"
+              s = p.read_text(encoding=enc).replace("1.2.0", "1.2.2")
+              p.write_text(s, encoding=enc)
+          '@ | Set-Content -Encoding UTF8 patch_v121.py
+          python patch_v121.py
+          Remove-Item patch_v121.py
+
+      - name: Install dependencies
+        working-directory: Kartoteka_Local_v1.2.2
+        shell: cmd
+        run: |
+          python -m pip install --upgrade "pip<24"
+          pip install -r requirements.txt
+
+      - name: Compile check
+        working-directory: Kartoteka_Local_v1.2.2
+        shell: cmd
+        run: python -m compileall -q kartoteka main.py
+
+      - name: Unit tests
+        working-directory: Kartoteka_Local_v1.2.2
+        shell: cmd
+        run: python -m pytest -q
+
+      - name: Existing database employment timestamp self-test
+        working-directory: Kartoteka_Local_v1.2.2
+        shell: powershell
+        run: |
+          @'
+          import os
+          import sqlite3
+          import tempfile
+
+          from kartoteka.database import DB
+          from kartoteka.repository import Repository
+
+          fd, path = tempfile.mkstemp(suffix=".db")
+          os.close(fd)
+          try:
+              con = sqlite3.connect(path)
+              con.execute("CREATE TABLE persons(id INTEGER PRIMARY KEY AUTOINCREMENT, full_name TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
+              con.execute("CREATE TABLE employment(id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER NOT NULL, start_year INTEGER, end_year INTEGER, position TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
+              con.commit()
+              con.close()
+
+              db = DB(path).open()
+              repo = Repository(db)
+              pid = repo.create_person("Timestamp Compatibility Test")
+              eid = repo.add_employment(pid, {"start_year": 2000, "position": "Manual test"})
+              row = db.conn.execute("SELECT created_at, updated_at FROM employment WHERE id=?", (eid,)).fetchone()
+              assert row[0] and row[1]
+
+              repo.replace_centrasia_employment(
+                  pid,
+                  [{"start_year": 2001, "end_year": 2002, "position": "CentrAsia test"}],
+                  "https://centrasia.org/person2.php?st=1",
+              )
+              row = db.conn.execute("SELECT created_at, updated_at FROM employment WHERE person_id=? AND source_kind='centrasia'", (pid,)).fetchone()
+              assert row and row[0] and row[1]
+              db.close()
+              print("employment timestamp compatibility: OK")
+          finally:
+              try:
+                  os.remove(path)
+              except OSError:
+                  pass
+          '@ | Set-Content -Encoding UTF8 test_employment_compat.py
+          python test_employment_compat.py
+
+      - name: CentrAsia legacy encoding self-test
+        working-directory: Kartoteka_Local_v1.2.2
+        shell: cmd
+        run: python -c "from kartoteka.centrasia import _legacy_quote,CentrasiaClient; k=chr(1050); p=chr(37); exp=p+'CA'; enc=_legacy_quote(k); assert enc==exp, enc; u=CentrasiaClient()._catalog_url('3',k); assert 'CR=3' in u and ('FR='+exp) in u and (p+'D0'+p+'9A') not in u, u; print(u)"
+
+      - name: Build Kartoteka.exe
+        working-directory: Kartoteka_Local_v1.2.2
+        shell: cmd
+        run: pyinstaller --clean --noconfirm Kartoteka.spec
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup --no-progress -y
+
+      - name: Normalize installer encoding
+        working-directory: Kartoteka_Local_v1.2.2
+        shell: powershell
+        run: |
+          $p = Resolve-Path 'installer/Kartoteka.iss'
+          $txt = [IO.File]::ReadAllText($p, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF)
+          [IO.File]::WriteAllText($p, $txt, (New-Object Text.UTF8Encoding($true)))
+
+      - name: Build installer
+        working-directory: Kartoteka_Local_v1.2.2
+        shell: cmd
+        run: '"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\Kartoteka.iss'
+
+      - name: Verify installer
+        working-directory: Kartoteka_Local_v1.2.2
+        shell: powershell
+        run: |
+          $p='installer_output/Kartoteka_Setup_v1.2.2_Win7-11_x64.exe'
+          if (!(Test-Path $p)) { throw 'Installer not created' }
+          Get-Item $p | Format-List Name,Length,FullName
+          Get-FileHash $p -Algorithm SHA256
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kartoteka_Setup_v1.2.2_Win7-11_x64
+          path: Kartoteka_Local_v1.2.2/installer_output/Kartoteka_Setup_v1.2.2_Win7-11_x64.exe
+          if-no-files-found: error
+          retention-days: 30
