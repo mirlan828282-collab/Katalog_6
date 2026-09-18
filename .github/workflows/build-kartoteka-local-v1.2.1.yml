@@ -107,7 +107,7 @@ jobs:
       - name: CentrAsia legacy encoding self-test
         working-directory: Kartoteka_Local_v1.2.1
         shell: cmd
-        run: python -c "from kartoteka.centrasia import _legacy_quote,CentrasiaClient; assert _legacy_quote('К')=='%CA'; u=CentrasiaClient()._catalog_url('3','К'); assert 'CR=3' in u and 'FR=%CA' in u and '%D0%9A' not in u; print(u)"
+        run: python -c "from kartoteka.centrasia import _legacy_quote,CentrasiaClient; k=chr(1050); assert _legacy_quote(k)=='%CA', _legacy_quote(k); u=CentrasiaClient()._catalog_url('3',k); assert 'CR=3' in u and 'FR=%CA' in u and '%D0%9A' not in u, u; print(u)"
 
       - name: Build Kartoteka.exe
         working-directory: Kartoteka_Local_v1.2.1
