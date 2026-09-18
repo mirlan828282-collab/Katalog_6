@@ -73,9 +73,9 @@ jobs:
           $iss = Get-Content 'installer/Kartoteka.iss' -Raw -Encoding UTF8
           if ($init -notmatch 'APP_VERSION = "1\.3\.0"') { throw 'Wrong app version' }
           if ($init -notmatch 'CREATOR = "Esenbekov M\."') { throw 'Wrong creator' }
-          if ($app -notmatch 'Кыргызская Республика') { throw 'Default country missing' }
+          if ($app -notmatch 'country_filter') { throw 'Country filter missing' }
           if ($app -notmatch '<F5>') { throw 'F5 refresh binding missing' }
-          if ($app -notmatch 'CentrAsia — страны и списки') { throw 'CentrAsia country directory missing' }
+          if ($app -notmatch 'centrasia_directory_window') { throw 'CentrAsia country directory missing' }
           if ($iss -notmatch 'MyAppVersion "1\.3\.0"') { throw 'Installer version mismatch' }
           Write-Host 'release metadata: OK'
 
