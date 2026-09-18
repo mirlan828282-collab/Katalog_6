@@ -68,22 +68,10 @@ jobs:
 
           p = root / "kartoteka" / "app.py"
           s = p.read_text(encoding="utf-8")
-          old = '''            except Exception as e:
-                def fail():
-                    self.import_running = False
-                    self.status.config(text="CentrAsia: ошибка")
-                    messagebox.showerror("CentrAsia", str(e))
-                self.after(0, fail)'''
-          new = '''            except Exception as e:
-                message = str(e) or repr(e)
-                def fail(message=message):
-                    self.import_running = False
-                    self.status.config(text="CentrAsia: ошибка")
-                    messagebox.showerror("CentrAsia", message)
-                self.after(0, fail)'''
-          if old not in s:
+          if "def fail():" not in s:
               raise RuntimeError("CentrAsia error callback patch target not found")
-          s = s.replace(old, new, 1)
+          s = s.replace("def fail():", "def fail(message=str(e) or repr(e)):", 1)
+          s = s.replace('messagebox.showerror("CentrAsia", str(e))', 'messagebox.showerror("CentrAsia", message)', 1)
           s = s.replace(
               'webbrowser.open("https://centrasia.org/search.php?st=" + query.replace(" ", "+"))',
               'webbrowser.open("https://www.google.com/search?q=site%3Acentrasia.org%2Fperson2.php+" + query.replace(" ", "+"))'
