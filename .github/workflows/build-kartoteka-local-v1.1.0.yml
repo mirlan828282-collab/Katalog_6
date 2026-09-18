@@ -23,15 +23,12 @@ jobs:
           Expand-Archive 'kartoteka_local_v1.1.0.zip' -DestinationPath 'kartoteka_local' -Force
           if (!(Test-Path 'kartoteka_local/main.py')) { throw 'main.py missing after extraction' }
 
-      - name: Fix biography parser
+      - name: Replace corrected services module
         shell: powershell
         run: |
-          $p = 'kartoteka_local/kartoteka/services.py'
-          $txt = [IO.File]::ReadAllText($p, [Text.Encoding]::UTF8)
-          $txt = $txt.Replace('19\\d{2}', '19\d{2}')
-          $txt = $txt.Replace('20\\d{2}', '20\d{2}')
-          [IO.File]::WriteAllText($p, $txt, (New-Object Text.UTF8Encoding($false)))
-          Write-Host 'Biography parser regex normalized'
+          $b64 = 'aW1wb3J0IG9zLCBzaHV0aWwsIHV1aWQsIHJlLCB3ZWJicm93c2VyCmZyb20gUElMIGltcG9ydCBJbWFnZQpmcm9tIG9wZW5weXhsIGltcG9ydCBsb2FkX3dvcmtib29rCmZyb20gLmNvbmZpZyBpbXBvcnQgcGhvdG9zX2Rpcl9mb3JfZGIsIHRodW1ibmFpbHNfZGlyX2Zvcl9kYgoKZGVmIGltcG9ydF9waG90byhyZXBvLHBpZCxzcmMscHJpbWFyeT1GYWxzZSk6CiAgICBleHQ9b3MucGF0aC5zcGxpdGV4dChzcmMpWzFdLmxvd2VyKCkKICAgIGlmIGV4dCBub3QgaW4gKCIuanBnIiwiLmpwZWciLCIucG5nIiwiLmJtcCIpOiByYWlzZSBWYWx1ZUVycm9yKCLQn9C+0LTQtNC10YDQttC40LLQsNGO0YLRgdGPIEpQRywgSlBFRywgUE5HLCBCTVAuIikKICAgIHN0ZW09IiVzXyVzIiUocGlkLHV1aWQudXVpZDQoKS5oZXgpCiAgICBwZGlyPXBob3Rvc19kaXJfZm9yX2RiKHJlcG8uZGIucGF0aCk7IHRkaXI9dGh1bWJuYWlsc19kaXJfZm9yX2RiKHJlcG8uZGIucGF0aCkKICAgIG9zLm1ha2VkaXJzKHBkaXIsZXhpc3Rfb2s9VHJ1ZSk7IG9zLm1ha2VkaXJzKHRkaXIsZXhpc3Rfb2s9VHJ1ZSkKICAgIGRzdD1vcy5wYXRoLmpvaW4ocGRpcixzdGVtK2V4dCk7IHRodW1iPW9zLnBhdGguam9pbih0ZGlyLHN0ZW0rIi5qcGciKQogICAgc2h1dGlsLmNvcHkyKHNyYyxkc3QpCiAgICB3aXRoIEltYWdlLm9wZW4oZHN0KSBhcyBpbToKICAgICAgICBpbT1pbS5jb252ZXJ0KCJSR0IiKTsgaW0udGh1bWJuYWlsKCg3MDAsNzAwKSk7IGltLnNhdmUodGh1bWIsIkpQRUciLHF1YWxpdHk9OTApCiAgICByZXBvLmFkZF9waG90b19yZWNvcmQocGlkLGRzdCx0aHVtYixwcmltYXJ5KQogICAgcmV0dXJuIGRzdCx0aHVtYgoKZGVmIGltcG9ydF9leGNlbChyZXBvLHBhdGgpOgogICAgd2I9bG9hZF93b3JrYm9vayhwYXRoLHJlYWRfb25seT1UcnVlLGRhdGFfb25seT1UcnVlKQogICAgd3M9d2JbItCf0LXRgNGB0L7QvdGLIl0gaWYgItCf0LXRgNGB0L7QvdGLIiBpbiB3Yi5zaGVldG5hbWVzIGVsc2Ugd2Jbd2Iuc2hlZXRuYW1lc1swXV0KICAgIHJvd3M9d3MuaXRlcl9yb3dzKHZhbHVlc19vbmx5PVRydWUpCiAgICBoZWFkZXJzPVtzdHIoeCBvciAiIikuc3RyaXAoKSBmb3IgeCBpbiBuZXh0KHJvd3MpXQogICAgaWR4PXtoOmkgZm9yIGksaCBpbiBlbnVtZXJhdGUoaGVhZGVycyl9CiAgICBmaW9faWR4PWlkeC5nZXQoItCk0JjQniIsaWR4LmdldCgi0J/QvtC70L3QvtC1INCk0JjQniIpKQogICAgaWYgZmlvX2lkeCBpcyBOb25lOiByYWlzZSBWYWx1ZUVycm9yKCLQkiBFeGNlbCDQvdGD0LbQvdCwINC60L7Qu9C+0L3QutCwIMKr0KTQmNCewrsuIikKICAgIGNyZWF0ZWQ9c2tpcHBlZD0wCiAgICBmb3Igcm93IGluIHJvd3M6CiAgICAgICAgaWYgZmlvX2lkeD49bGVuKHJvdykgb3Igbm90IHJvd1tmaW9faWR4XTogY29udGludWUKICAgICAgICBmaW89c3RyKHJvd1tmaW9faWR4XSkuc3RyaXAoKQogICAgICAgIGlmIHJlcG8uZHVwbGljYXRlcyhmaW8pOiBza2lwcGVkKz0xOyBjb250aW51ZQogICAgICAgIHJlcG8uY3JlYXRlX3BlcnNvbihmaW8pOyBjcmVhdGVkKz0xCiAgICByZXR1cm4gY3JlYXRlZCxza2lwcGVkCgpQQVQ9cmUuY29tcGlsZShyIig/UDxzPjE5XGR7Mn18MjBcZHsyfSlccypbLeKAk+KAlF1ccyooP1A8ZT4xOVxkezJ9fDIwXGR7Mn180L1cLj9ccyrQslwuPylccypbLeKAk+KAlDpdP1xzKig/UDx0Pi4rKSIscmUuSSkKZGVmIHBhcnNlX2Jpbyh0ZXh0KToKICAgIG91dD1bXQogICAgZm9yIGxpbmUgaW4gKHRleHQgb3IgIiIpLnNwbGl0bGluZXMoKToKICAgICAgICBtPVBBVC5tYXRjaChsaW5lLnN0cmlwKCIg4oCiLSIpKQogICAgICAgIGlmIG06CiAgICAgICAgICAgIGU9bS5ncm91cCgiZSIpCiAgICAgICAgICAgIG91dC5hcHBlbmQoeyJzdGFydF95ZWFyIjppbnQobS5ncm91cCgicyIpKSwiZW5kX3llYXIiOmludChlKSBpZiBlLmlzZGlnaXQoKSBlbHNlIE5vbmUsInBvc2l0aW9uIjptLmdyb3VwKCJ0Iikuc3RyaXAoKX0pCiAgICByZXR1cm4gb3V0Cg=='
+          [IO.File]::WriteAllBytes('kartoteka_local/kartoteka/services.py', [Convert]::FromBase64String($b64))
+          Write-Host 'Corrected services.py written'
 
       - name: Setup Python 3.7.9 x64
         uses: actions/setup-python@v5
