@@ -1,0 +1,29 @@
+name: Inspect Kartoteka photos
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ kartoteka-local-v1.2.1 ]
+    paths: [ '.github/workflows/inspect-kartoteka-employment.yml' ]
+
+jobs:
+  inspect:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source
+        shell: powershell
+        run: |
+          $parts = Get-ChildItem 'kartoteka_v1_2_source/part*.txt' | Sort-Object Name
+          $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          [IO.File]::WriteAllBytes('src.zip', [Convert]::FromBase64String($b64))
+          Expand-Archive 'src.zip' -DestinationPath '.' -Force
+      - name: Show photos migration and repository
+        shell: powershell
+        run: |
+          Write-Host '=== DATABASE MIGRATION 150-220 ==='
+          $db = Get-Content 'Kartoteka_Local_v1.2.0/kartoteka/database.py'
+          for($j=149;$j -lt [Math]::Min(220,$db.Count);$j++){ Write-Host (($j+1).ToString()+': '+$db[$j]) }
+          Write-Host '=== REPOSITORY PHOTOS 165-205 ==='
+          $r = Get-Content 'Kartoteka_Local_v1.2.0/kartoteka/repository.py'
+          for($j=164;$j -lt [Math]::Min(205,$r.Count);$j++){ Write-Host (($j+1).ToString()+': '+$r[$j]) }
