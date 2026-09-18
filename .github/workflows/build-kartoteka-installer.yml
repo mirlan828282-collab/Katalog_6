@@ -65,6 +65,77 @@ jobs:
         shell: powershell
         run: choco install innosetup --no-progress -y
 
+      - name: Rebuild valid Inno Setup script
+        working-directory: kartoteka_src/Kartoteka_v1.0.0
+        shell: powershell
+        run: |
+          $iss = @'
+          #define MyAppName "Картотека"
+          #define MyAppVersion "1.0.0"
+          #define MyAppPublisher "Mirlan"
+          #define MyAppExeName "Kartoteka.exe"
+
+          [Setup]
+          AppId={{B7BA4E70-C815-4D15-9DDD-4D5370B62244}
+          AppName={#MyAppName}
+          AppVersion={#MyAppVersion}
+          AppPublisher={#MyAppPublisher}
+          DefaultDirName={autopf}\Kartoteka
+          DefaultGroupName=Картотека
+          OutputDir=..\installer_output
+          OutputBaseFilename=Kartoteka_Setup_v1.0.0_Win7-11_x64
+          Compression=lzma2
+          SolidCompression=yes
+          ArchitecturesAllowed=x64
+          ArchitecturesInstallIn64BitMode=x64
+          PrivilegesRequired=admin
+          UninstallDisplayName=Картотека
+          WizardStyle=modern
+
+          [Types]
+          Name: "server"; Description: "Основной компьютер — сервер + клиент"
+          Name: "client"; Description: "Рабочее место — только клиент"
+
+          [Components]
+          Name: "client"; Description: "Клиент Картотека"; Types: server client; Flags: fixed
+          Name: "server"; Description: "Сервер Картотека"; Types: server
+
+          [Files]
+          Source: "..\dist\Kartoteka.exe"; DestDir: "{app}"; Components: client; Flags: ignoreversion
+          Source: "..\dist\KartotekaServer.exe"; DestDir: "{app}"; Components: server; Flags: ignoreversion
+
+          [Dirs]
+          Name: "{commonappdata}\Kartoteka\data"
+          Name: "{commonappdata}\Kartoteka\data\photos"
+          Name: "{commonappdata}\Kartoteka\data\thumbnails"
+          Name: "{commonappdata}\Kartoteka\backups"
+          Name: "{commonappdata}\Kartoteka\logs"
+
+          [Icons]
+          Name: "{autoprograms}\Картотека"; Filename: "{app}\Kartoteka.exe"
+          Name: "{autodesktop}\Картотека"; Filename: "{app}\Kartoteka.exe"
+
+          [Run]
+          Filename: "{app}\KartotekaServer.exe"; Description: "Запустить сервер Картотека"; Components: server; Flags: nowait postinstall skipifsilent
+          Filename: "{app}\Kartoteka.exe"; Description: "Запустить Картотеку"; Components: client; Flags: nowait postinstall skipifsilent
+
+          [Code]
+          procedure CurStepChanged(CurStep: TSetupStep);
+          var
+            ResultCode: Integer;
+          begin
+            if (CurStep = ssPostInstall) and WizardIsComponentSelected('server') then
+            begin
+              Exec('netsh', 'advfirewall firewall add rule name="Kartoteka Server 8765" dir=in action=allow protocol=TCP localport=8765', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+            end;
+          end;
+          '@
+          $iss = ($iss -split "`r?`n" | ForEach-Object { $_ -replace '^          ', '' }) -join "`r`n"
+          $utf8 = New-Object System.Text.UTF8Encoding($true)
+          [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'installer\Kartoteka.iss'), $iss, $utf8)
+          Write-Host 'First lines of generated installer script:'
+          Get-Content 'installer\Kartoteka.iss' -TotalCount 8
+
       - name: Build installer
         working-directory: kartoteka_src/Kartoteka_v1.0.0
         shell: cmd
