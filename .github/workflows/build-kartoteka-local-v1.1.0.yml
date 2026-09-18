@@ -23,6 +23,16 @@ jobs:
           Expand-Archive 'kartoteka_local_v1.1.0.zip' -DestinationPath 'kartoteka_local' -Force
           if (!(Test-Path 'kartoteka_local/main.py')) { throw 'main.py missing after extraction' }
 
+      - name: Fix biography parser
+        shell: powershell
+        run: |
+          $p = 'kartoteka_local/kartoteka/services.py'
+          $txt = [IO.File]::ReadAllText($p, [Text.Encoding]::UTF8)
+          $txt = $txt.Replace('19\\d{2}', '19\d{2}')
+          $txt = $txt.Replace('20\\d{2}', '20\d{2}')
+          [IO.File]::WriteAllText($p, $txt, (New-Object Text.UTF8Encoding($false)))
+          Write-Host 'Biography parser regex normalized'
+
       - name: Setup Python 3.7.9 x64
         uses: actions/setup-python@v5
         with:
@@ -55,16 +65,54 @@ jobs:
         shell: powershell
         run: choco install innosetup --no-progress -y
 
-      - name: Normalize installer UTF-8 BOM
+      - name: Rebuild installer script safely
         working-directory: kartoteka_local
         shell: powershell
         run: |
-          $p = Resolve-Path 'installer/Kartoteka.iss'
-          $txt = Get-Content $p -Raw -Encoding UTF8
-          $txt = $txt.TrimStart([char]0xFEFF)
+          $iss = @'
+          #define MyAppName "Картотека"
+          #define MyAppVersion "1.1.0"
+          #define MyAppPublisher "Esenbekov M."
+          #define MyAppExeName "Kartoteka.exe"
+
+          [Setup]
+          AppId={{A7F1F69B-92B2-48BC-A729-2310A2E42375}
+          AppName={#MyAppName}
+          AppVersion={#MyAppVersion}
+          AppPublisher={#MyAppPublisher}
+          VersionInfoCompany={#MyAppPublisher}
+          VersionInfoDescription=КАРТОТЕКА — база данных персон
+          DefaultDirName={autopf}\Kartoteka
+          DefaultGroupName=Картотека
+          OutputDir=..\installer_output
+          OutputBaseFilename=Kartoteka_Setup_v1.1.0_Win7-11_x64
+          Compression=lzma2
+          SolidCompression=yes
+          ArchitecturesAllowed=x64
+          ArchitecturesInstallIn64BitMode=x64
+          PrivilegesRequired=admin
+          UninstallDisplayName=Картотека
+          WizardStyle=modern
+
+          [Files]
+          Source: "..\dist\Kartoteka.exe"; DestDir: "{app}"; Flags: ignoreversion
+
+          [Dirs]
+          Name: "{commonappdata}\Kartoteka\data"
+          Name: "{commonappdata}\Kartoteka\backups"
+          Name: "{commonappdata}\Kartoteka\logs"
+
+          [Icons]
+          Name: "{autoprograms}\Картотека"; Filename: "{app}\Kartoteka.exe"
+          Name: "{autodesktop}\Картотека"; Filename: "{app}\Kartoteka.exe"
+
+          [Run]
+          Filename: "{app}\Kartoteka.exe"; Description: "Запустить Картотеку"; Flags: nowait postinstall skipifsilent
+          '@
+          $iss = ($iss -split "`r?`n" | ForEach-Object { $_ -replace '^          ', '' }) -join "`r`n"
           $enc = New-Object System.Text.UTF8Encoding($true)
-          [IO.File]::WriteAllText($p, $txt, $enc)
-          Get-Content $p -TotalCount 5
+          [IO.File]::WriteAllText((Resolve-Path 'installer/Kartoteka.iss').Path, $iss, $enc)
+          Get-Content 'installer/Kartoteka.iss' -TotalCount 8
 
       - name: Build installer
         working-directory: kartoteka_local
