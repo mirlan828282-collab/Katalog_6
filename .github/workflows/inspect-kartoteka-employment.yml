@@ -18,9 +18,17 @@ jobs:
           $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
           [IO.File]::WriteAllBytes('src.zip', [Convert]::FromBase64String($b64))
           Expand-Archive 'src.zip' -DestinationPath '.' -Force
-      - name: Show employment references
+      - name: Show employment schema and repository methods
         shell: powershell
         run: |
-          Get-ChildItem 'Kartoteka_Local_v1.2.0' -Recurse -Filter *.py |
-            Select-String -Pattern 'employment|created_at' -Context 3,5 |
-            ForEach-Object { $_.ToString() }
+          Write-Host '=== DATABASE EMPLOYMENT SCHEMA ==='
+          $db = Get-Content 'Kartoteka_Local_v1.2.0/kartoteka/database.py'
+          for ($i=0; $i -lt $db.Count; $i++) {
+            if ($db[$i] -match 'CREATE TABLE.*employment|created_at|updated_at') {
+              $a=[Math]::Max(0,$i-5); $b=[Math]::Min($db.Count-1,$i+18)
+              for($j=$a;$j -le $b;$j++){ Write-Host (($j+1).ToString()+': '+$db[$j]) }
+            }
+          }
+          Write-Host '=== REPOSITORY LINES 135-170 ==='
+          $r = Get-Content 'Kartoteka_Local_v1.2.0/kartoteka/repository.py'
+          for($j=134;$j -lt [Math]::Min(170,$r.Count);$j++){ Write-Host (($j+1).ToString()+': '+$r[$j]) }
