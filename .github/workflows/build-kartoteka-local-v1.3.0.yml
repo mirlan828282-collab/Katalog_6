@@ -60,7 +60,8 @@ jobs:
       - name: Import smoke test
         working-directory: Kartoteka_Local_v1.3.0
         shell: cmd
-        run: python -c "from kartoteka.app import App; from kartoteka.centrasia import CentrasiaClient; from kartoteka.services import split_fio; assert split_fio('Кулов Феликс Шаршенбаевич') == ('Кулов','Феликс','Шаршенбаевич'); print('import smoke: OK')"
+        run: |
+          python -c "from kartoteka.app import App; from kartoteka.centrasia import CentrasiaClient; from kartoteka.services import split_fio; assert split_fio('Кулов Феликс Шаршенбаевич') == ('Кулов','Феликс','Шаршенбаевич'); print('import smoke OK')"
 
       - name: Verify release metadata and requested defaults
         working-directory: Kartoteka_Local_v1.3.0
