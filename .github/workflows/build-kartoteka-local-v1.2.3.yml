@@ -131,75 +131,7 @@ jobs:
           photo_patch_marker = '        self.conn.commit()\n\n    def open(self):'
           if photo_patch_marker not in s:
               raise RuntimeError("database final migration commit marker not found")
-          photo_patch = '''        # v1.2.3: normalize legacy photos table used by older Kartoteka builds.
-        photo_cols = self._columns("photos")
-        required_photo_cols = {"id", "person_id", "path", "thumbnail_path", "is_primary", "source_url", "created_at"}
-        if "path" not in photo_cols:
-            self.conn.execute("DROP TABLE IF EXISTS photos__new_123")
-            self.conn.execute("""CREATE TABLE photos__new_123 (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                person_id INTEGER NOT NULL,
-                path TEXT NOT NULL,
-                thumbnail_path TEXT,
-                is_primary INTEGER NOT NULL DEFAULT 0,
-                source_url TEXT,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY(person_id) REFERENCES persons(id) ON DELETE CASCADE
-            )""")
-            legacy_path = next((x for x in ("photo_path","file_path","image_path","filepath","filename","file") if x in photo_cols), None)
-            legacy_thumb = next((x for x in ("thumb_path","thumbnail","preview_path","thumbnail_path") if x in photo_cols), None)
-            legacy_primary = next((x for x in ("is_primary","primary_photo","is_main","main_photo") if x in photo_cols), None)
-            legacy_source = next((x for x in ("source_url","url","photo_url") if x in photo_cols), None)
-            if "person_id" in photo_cols:
-                id_expr = "id" if "id" in photo_cols else "NULL"
-                path_expr = ('COALESCE("%s",\'\')' % legacy_path) if legacy_path else "''"
-                thumb_expr = ('"%s"' % legacy_thumb) if legacy_thumb else "NULL"
-                primary_expr = ('COALESCE("%s",0)' % legacy_primary) if legacy_primary else "0"
-                source_expr = ('"%s"' % legacy_source) if legacy_source else "NULL"
-                created_expr = "COALESCE(created_at, '%s')" % now.replace("'", "''") if "created_at" in photo_cols else "'%s'" % now.replace("'", "''")
-                sql = """INSERT OR IGNORE INTO photos__new_123
-                    (id,person_id,path,thumbnail_path,is_primary,source_url,created_at)
-                    SELECT %s,person_id,%s,%s,%s,%s,%s FROM photos""" % (
-                        id_expr, path_expr, thumb_expr, primary_expr, source_expr, created_expr
-                    )
-                self.conn.execute(sql)
-            self.conn.execute("DROP INDEX IF EXISTS idx_photos_person")
-            backup = "photos_legacy_pre_123"
-            exists = self.conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (backup,)).fetchone()
-            if exists:
-                self.conn.execute("DROP TABLE " + backup)
-            self.conn.execute("ALTER TABLE photos RENAME TO " + backup)
-            self.conn.execute("ALTER TABLE photos__new_123 RENAME TO photos")
-            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_photos_person ON photos(person_id)")
-            photo_cols = self._columns("photos")
-        else:
-            for name, decl in (
-                ("thumbnail_path", "TEXT"),
-                ("is_primary", "INTEGER DEFAULT 0"),
-                ("source_url", "TEXT"),
-                ("created_at", "TEXT"),
-            ):
-                if name not in photo_cols:
-                    self.conn.execute("ALTER TABLE photos ADD COLUMN %s %s" % (name, decl))
-            photo_cols = self._columns("photos")
-            if "created_at" in photo_cols:
-                self.conn.execute("UPDATE photos SET created_at=? WHERE created_at IS NULL OR created_at=''", (now,))
-            if "is_primary" in photo_cols:
-                self.conn.execute("UPDATE photos SET is_primary=0 WHERE is_primary IS NULL")
-
-        # v1.2.3: normalize legacy sources table as well, so CentrAsia can finish after saving a photo.
-        source_cols = self._columns("sources")
-        for name, decl in (
-            ("title", "TEXT"),
-            ("url", "TEXT"),
-            ("note", "TEXT"),
-            ("source_kind", "TEXT"),
-            ("retrieved_at", "TEXT"),
-        ):
-            if name not in source_cols:
-                self.conn.execute("ALTER TABLE sources ADD COLUMN %s %s" % (name, decl))
-        self.conn.commit()
-'''
+          photo_patch = "        # v1.2.3: normalize legacy photos table used by older Kartoteka builds.\n        photo_cols = self._columns(\"photos\")\n        if \"path\" not in photo_cols:\n            self.conn.execute(\"DROP TABLE IF EXISTS photos__new_123\")\n            self.conn.execute(\"\"\"CREATE TABLE photos__new_123 (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                person_id INTEGER NOT NULL,\n                path TEXT NOT NULL,\n                thumbnail_path TEXT,\n                is_primary INTEGER NOT NULL DEFAULT 0,\n                source_url TEXT,\n                created_at TEXT NOT NULL,\n                FOREIGN KEY(person_id) REFERENCES persons(id) ON DELETE CASCADE\n            )\"\"\")\n            legacy_path = next((x for x in (\"photo_path\",\"file_path\",\"image_path\",\"filepath\",\"filename\",\"file\") if x in photo_cols), None)\n            legacy_thumb = next((x for x in (\"thumb_path\",\"thumbnail\",\"preview_path\",\"thumbnail_path\") if x in photo_cols), None)\n            legacy_primary = next((x for x in (\"is_primary\",\"primary_photo\",\"is_main\",\"main_photo\") if x in photo_cols), None)\n            legacy_source = next((x for x in (\"source_url\",\"url\",\"photo_url\") if x in photo_cols), None)\n            if \"person_id\" in photo_cols:\n                id_expr = \"id\" if \"id\" in photo_cols else \"NULL\"\n                path_expr = ('COALESCE(\"%s\",\\'\\')' % legacy_path) if legacy_path else \"''\"\n                thumb_expr = ('\"%s\"' % legacy_thumb) if legacy_thumb else \"NULL\"\n                primary_expr = ('COALESCE(\"%s\",0)' % legacy_primary) if legacy_primary else \"0\"\n                source_expr = ('\"%s\"' % legacy_source) if legacy_source else \"NULL\"\n                created_expr = \"COALESCE(created_at, '%s')\" % now.replace(\"'\", \"''\") if \"created_at\" in photo_cols else \"'%s'\" % now.replace(\"'\", \"''\")\n                sql = \"\"\"INSERT OR IGNORE INTO photos__new_123\n                    (id,person_id,path,thumbnail_path,is_primary,source_url,created_at)\n                    SELECT %s,person_id,%s,%s,%s,%s,%s FROM photos\"\"\" % (\n                        id_expr, path_expr, thumb_expr, primary_expr, source_expr, created_expr\n                    )\n                self.conn.execute(sql)\n            self.conn.execute(\"DROP INDEX IF EXISTS idx_photos_person\")\n            backup = \"photos_legacy_pre_123\"\n            exists = self.conn.execute(\"SELECT 1 FROM sqlite_master WHERE type='table' AND name=?\", (backup,)).fetchone()\n            if exists:\n                self.conn.execute(\"DROP TABLE \" + backup)\n            self.conn.execute(\"ALTER TABLE photos RENAME TO \" + backup)\n            self.conn.execute(\"ALTER TABLE photos__new_123 RENAME TO photos\")\n            self.conn.execute(\"CREATE INDEX IF NOT EXISTS idx_photos_person ON photos(person_id)\")\n            photo_cols = self._columns(\"photos\")\n        else:\n            for name, decl in (\n                (\"thumbnail_path\", \"TEXT\"),\n                (\"is_primary\", \"INTEGER DEFAULT 0\"),\n                (\"source_url\", \"TEXT\"),\n                (\"created_at\", \"TEXT\"),\n            ):\n                if name not in photo_cols:\n                    self.conn.execute(\"ALTER TABLE photos ADD COLUMN %s %s\" % (name, decl))\n            photo_cols = self._columns(\"photos\")\n            if \"created_at\" in photo_cols:\n                self.conn.execute(\"UPDATE photos SET created_at=? WHERE created_at IS NULL OR created_at=''\", (now,))\n            if \"is_primary\" in photo_cols:\n                self.conn.execute(\"UPDATE photos SET is_primary=0 WHERE is_primary IS NULL\")\n\n        # v1.2.3: normalize legacy sources table as well.\n        source_cols = self._columns(\"sources\")\n        for name, decl in (\n            (\"title\", \"TEXT\"),\n            (\"url\", \"TEXT\"),\n            (\"note\", \"TEXT\"),\n            (\"source_kind\", \"TEXT\"),\n            (\"retrieved_at\", \"TEXT\"),\n        ):\n            if name not in source_cols:\n                self.conn.execute(\"ALTER TABLE sources ADD COLUMN %s %s\" % (name, decl))\n        self.conn.commit()\n"
           s = s.replace(photo_patch_marker, photo_patch + '\n    def open(self):', 1)
           p.write_text(s, encoding="utf-8")
 
