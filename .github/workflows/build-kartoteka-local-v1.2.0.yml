@@ -33,6 +33,19 @@ jobs:
           Expand-Archive 'Kartoteka_Local_v1.2.0_source.zip' -DestinationPath '.' -Force
           if (!(Test-Path 'Kartoteka_Local_v1.2.0/main.py')) { throw 'main.py missing after extraction' }
 
+      - name: Fix Windows Excel file close
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = 'Kartoteka_Local_v1.2.0/kartoteka/services.py'
+          $txt = [IO.File]::ReadAllText($p, [Text.Encoding]::UTF8)
+          $needle = '    raw = [tuple(r) for r in ws.iter_rows(values_only=True)]'
+          if (!$txt.Contains($needle)) { throw 'Excel reader patch target not found' }
+          $replacement = $needle + "`r`n    wb.close()"
+          $txt = $txt.Replace($needle, $replacement)
+          [IO.File]::WriteAllText($p, $txt, (New-Object Text.UTF8Encoding($false)))
+          Write-Host 'Excel workbook close fix applied'
+
       - name: Setup Python 3.7.9 x64
         uses: actions/setup-python@v5
         with:
