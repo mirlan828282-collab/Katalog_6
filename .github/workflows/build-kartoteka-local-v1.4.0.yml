@@ -1,0 +1,168 @@
+name: Build Kartoteka Local 1.4.0
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ kartoteka-local-v1.4.0 ]
+    paths:
+      - 'kartoteka_v140_source/**'
+      - '.github/workflows/build-kartoteka-local-v1.4.0.yml'
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct verified v1.4.0 source
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $parts = Get-ChildItem 'kartoteka_v140_source/part*.txt' | Sort-Object Name
+          if ($parts.Count -ne 9) { throw "Expected 9 source parts, found $($parts.Count)" }
+          $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          [IO.File]::WriteAllBytes('Kartoteka_Local_v1.4.0_source.zip', [Convert]::FromBase64String($b64))
+          $hash = (Get-FileHash 'Kartoteka_Local_v1.4.0_source.zip' -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Source SHA256: $hash"
+          if ($hash -ne '25931da56b708a96ee743404ab3ba9d38574751bfc71f21256e7b5e998894c89') {
+            throw "Source checksum mismatch: $hash"
+          }
+          New-Item -ItemType Directory -Force 'Kartoteka_Local_v1.4.0' | Out-Null
+          Expand-Archive 'Kartoteka_Local_v1.4.0_source.zip' -DestinationPath 'Kartoteka_Local_v1.4.0' -Force
+          if (!(Test-Path 'Kartoteka_Local_v1.4.0/main.py')) { throw 'main.py missing' }
+
+      - name: Setup Python 3.7.9 x64
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.7.9'
+          architecture: 'x64'
+
+      - name: Install dependencies
+        working-directory: Kartoteka_Local_v1.4.0
+        shell: cmd
+        run: |
+          python -m pip install --upgrade "pip<24"
+          pip install -r requirements.txt
+
+      - name: Download face recognition models
+        working-directory: Kartoteka_Local_v1.4.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force 'models' | Out-Null
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx?download=true' -OutFile 'models/face_detection_yunet_2023mar.onnx'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://huggingface.co/opencv/face_recognition_sface/resolve/main/face_recognition_sface_2021dec.onnx?download=true' -OutFile 'models/face_recognition_sface_2021dec.onnx'
+          $h1=(Get-FileHash 'models/face_detection_yunet_2023mar.onnx' -Algorithm SHA256).Hash.ToLower()
+          $h2=(Get-FileHash 'models/face_recognition_sface_2021dec.onnx' -Algorithm SHA256).Hash.ToLower()
+          Write-Host "YuNet SHA256: $h1"
+          Write-Host "SFace SHA256: $h2"
+          if ($h1 -ne '8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4') { throw 'YuNet checksum mismatch' }
+          if ($h2 -ne '0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79') { throw 'SFace checksum mismatch' }
+
+      - name: Compile check
+        working-directory: Kartoteka_Local_v1.4.0
+        shell: cmd
+        run: python -m compileall -q kartoteka main.py
+
+      - name: Unit and migration tests
+        working-directory: Kartoteka_Local_v1.4.0
+        shell: cmd
+        run: python -m pytest -q
+
+      - name: Face engine smoke test
+        working-directory: Kartoteka_Local_v1.4.0
+        shell: cmd
+        run: |
+          python -c "from kartoteka.face_search import FaceSearchEngine; e=FaceSearchEngine(); print('FACE ENGINE OK')"
+
+      - name: Database and LAN mode smoke test
+        working-directory: Kartoteka_Local_v1.4.0
+        shell: cmd
+        run: |
+          python -c "import os,tempfile; from kartoteka.database import DB; from kartoteka.repository import Repository; p=os.path.join(tempfile.mkdtemp(),'smoke.db'); d=DB(p); d.open(); r=Repository(d); pid=r.create_person({'surname':'Test','name':'User','patronymic':'','full_name':'Test User','country':'Кыргызская Республика','biography':''}); assert r.get_person(pid); d.close(); print('DB SMOKE OK')"
+
+      - name: Verify release metadata and required features
+        working-directory: Kartoteka_Local_v1.4.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $init = Get-Content 'kartoteka/__init__.py' -Raw -Encoding UTF8
+          $app = Get-Content 'kartoteka/app.py' -Raw -Encoding UTF8
+          $db = Get-Content 'kartoteka/database.py' -Raw -Encoding UTF8
+          $iss = Get-Content 'installer/Kartoteka.iss' -Raw -Encoding UTF8
+          if ($init -notmatch 'APP_VERSION = "1\.4\.0"') { throw 'Wrong app version' }
+          if ($init -notmatch 'CREATOR = "Esenbekov M\."') { throw 'Wrong creator' }
+          if ($app -notmatch 'def face_search') { throw 'Face search is missing' }
+          if ($app -notmatch '<F5>') { throw 'F5 refresh binding is missing' }
+          if ($app -notmatch 'context_menu') { throw 'Context menu support is missing' }
+          if ($db -notmatch 'acquire_network_lock') { throw 'LAN write lock is missing' }
+          if ($iss -notmatch 'MyAppVersion "1\.4\.0"') { throw 'Installer version mismatch' }
+          if (!(Test-Path 'models/face_detection_yunet_2023mar.onnx')) { throw 'YuNet model missing' }
+          if (!(Test-Path 'models/face_recognition_sface_2021dec.onnx')) { throw 'SFace model missing' }
+          Write-Host 'Release feature checks OK'
+
+      - name: Build Kartoteka.exe
+        working-directory: Kartoteka_Local_v1.4.0
+        shell: cmd
+        run: pyinstaller --clean --noconfirm Kartoteka.spec
+
+      - name: Verify executable
+        working-directory: Kartoteka_Local_v1.4.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='dist/Kartoteka.exe'
+          if (!(Test-Path $p)) { throw 'Kartoteka.exe not created' }
+          $i=Get-Item $p
+          if ($i.Length -lt 10000000) { throw "Executable unexpectedly small: $($i.Length)" }
+          $i | Format-List Name,Length,FullName
+          Get-FileHash $p -Algorithm SHA256
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup --no-progress -y
+
+      - name: Normalize installer script encoding
+        working-directory: Kartoteka_Local_v1.4.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p = Resolve-Path 'installer/Kartoteka.iss'
+          $txt = [IO.File]::ReadAllText($p, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF)
+          [IO.File]::WriteAllText($p, $txt, (New-Object Text.UTF8Encoding($true)))
+
+      - name: Build installer
+        working-directory: Kartoteka_Local_v1.4.0
+        shell: cmd
+        run: '"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\Kartoteka.iss'
+
+      - name: Verify installer
+        working-directory: Kartoteka_Local_v1.4.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='installer_output/Kartoteka_Setup_v1.4.0_Win7-11_x64.exe'
+          if (!(Test-Path $p)) { throw 'Installer not created' }
+          $i=Get-Item $p
+          if ($i.Length -lt 10000000) { throw "Installer unexpectedly small: $($i.Length)" }
+          $i | Format-List Name,Length,FullName
+          Get-FileHash $p -Algorithm SHA256
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kartoteka_Setup_v1.4.0_Win7-11_x64
+          path: Kartoteka_Local_v1.4.0/installer_output/Kartoteka_Setup_v1.4.0_Win7-11_x64.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kartoteka_Local_v1.4.0_source
+          path: Kartoteka_Local_v1.4.0_source.zip
+          if-no-files-found: error
+          retention-days: 30
